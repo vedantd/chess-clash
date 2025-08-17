@@ -19,8 +19,6 @@ import { parseNumber, formatNumber } from "@/lib/utils";
 import { Send } from "lucide-react";
 import toast from "react-hot-toast";
 
-import ChallengeEscrowABI from "@/lib/contracts/abis/ChallengeEscrow.json";
-
 interface CreateChallengeFormProps {
   players: Player[];
   onSuccess: () => void;
@@ -32,40 +30,66 @@ export function CreateChallengeForm({
 }: CreateChallengeFormProps) {
   const { account } = useEmbeddedWallet();
   const address = account?.address;
-  const [text, setText] = useState("");
-  const [selectedToken, setSelectedToken] = useState("");
+  const [description, setDescription] = useState("");
+  const [playerA, setPlayerA] = useState("");
+  const [playerB, setPlayerB] = useState("");
   const [stakeAmount, setStakeAmount] = useState("");
+  const [duration, setDuration] = useState("3600"); // 1 hour default
   const [isCreating, setIsCreating] = useState(false);
 
-  const { createChallenge } = useCreateChallenge();
-  const { stakeForA } = useStakeForA();
+  const { createChallenge, isCreating: isCreatingChallenge } =
+    useCreateChallenge();
+  const { stakeForA, isStaking } = useStakeForA();
 
-  const selectedPlayer = players.find((p) => p.tokenAddress === selectedToken);
+  const selectedPlayerA = players.find((p) => p.tokenAddress === playerA);
+  const selectedPlayerB = players.find((p) => p.tokenAddress === playerB);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!address || !selectedToken || !text.trim() || !stakeAmount) {
+    if (
+      !address ||
+      !playerA ||
+      !playerB ||
+      !description.trim() ||
+      !stakeAmount ||
+      !duration
+    ) {
       toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (playerA === playerB) {
+      toast.error("Player A and Player B must be different");
       return;
     }
 
     setIsCreating(true);
     try {
       // Create the challenge
-      const createResult = await createChallenge(selectedToken, text);
+      const durationBigInt = BigInt(duration);
+      const createResult = await createChallenge(
+        playerA as `0x${string}`,
+        playerB as `0x${string}`,
+        description,
+        durationBigInt
+      );
 
-      // Extract challenge ID from events (this is a simplified version)
-      const challengeId = 1n; // In reality, this would come from the event
+      // Wait for the transaction to be mined and get the challenge ID
+      // For now, we'll assume it's the next challenge ID
+      // In a real implementation, you'd parse the event to get the actual ID
+      const challengeId = 0n; // This should come from the event
 
-      // Stake for A
+      // Stake for player A
       const stakeAmountBigInt = parseNumber(stakeAmount);
       await stakeForA(challengeId, stakeAmountBigInt);
 
       toast.success("Challenge created and staked successfully!");
-      setText("");
-      setSelectedToken("");
+      setDescription("");
+      setPlayerA("");
+      setPlayerB("");
       setStakeAmount("");
+      setDuration("3600");
       onSuccess();
     } catch (error) {
       console.error("Create challenge error:", error);
@@ -96,76 +120,102 @@ export function CreateChallengeForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">
-              Challenge Statement
+              Challenge Description
             </label>
             <Input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="e.g., Magnus Carlsen will win the next World Chess Championship"
-              className="w-full"
-              maxLength={280}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g., Magnus will beat Gukesh today"
+              required
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              {text.length}/280 characters
-            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Player A (You're betting on)
+              </label>
+              <Select value={playerA} onValueChange={setPlayerA}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Player A" />
+                </SelectTrigger>
+                <SelectContent>
+                  {players.map((player) => (
+                    <SelectItem
+                      key={player.tokenAddress}
+                      value={player.tokenAddress}
+                    >
+                      {player.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Player B (Against)
+              </label>
+              <Select value={playerB} onValueChange={setPlayerB}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Player B" />
+                </SelectTrigger>
+                <SelectContent>
+                  {players.map((player) => (
+                    <SelectItem
+                      key={player.tokenAddress}
+                      value={player.tokenAddress}
+                    >
+                      {player.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">
-              Choose Your Token (Side A)
+              Stake Amount ({selectedPlayerA?.symbol || "Player A"} tokens)
             </label>
-            <Select value={selectedToken} onValueChange={setSelectedToken}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a token" />
-              </SelectTrigger>
-              <SelectContent>
-                {players.map((player) => (
-                  <SelectItem
-                    key={player.tokenAddress}
-                    value={player.tokenAddress}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span>{player.symbol}</span>
-                      <span className="text-muted-foreground text-xs">
-                        {player.name}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Input
+              type="number"
+              value={stakeAmount}
+              onChange={(e) => setStakeAmount(e.target.value)}
+              placeholder="0.0"
+              required
+            />
           </div>
 
-          {selectedPlayer && (
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Stake Amount ({selectedPlayer.symbol})
-              </label>
-              <Input
-                type="number"
-                value={stakeAmount}
-                onChange={(e) => setStakeAmount(e.target.value)}
-                placeholder="Enter amount to stake"
-                className="w-full"
-                min="0"
-                step="0.01"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Available: {formatNumber(selectedPlayer.initialSupply)}{" "}
-                {selectedPlayer.symbol}
-              </p>
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Duration (seconds)
+            </label>
+            <Input
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              placeholder="3600"
+              required
+            />
+            <p className="text-sm text-muted-foreground mt-1">
+              Default: 3600 seconds (1 hour)
+            </p>
+          </div>
 
           <Button
             type="submit"
-            disabled={
-              isCreating || !text.trim() || !selectedToken || !stakeAmount
-            }
-            className="w-full flex items-center gap-2"
+            disabled={isCreating || isCreatingChallenge || isStaking}
+            className="w-full"
           >
-            <Send className="h-4 w-4" />
-            {isCreating ? "Creating..." : "Create & Stake"}
+            {isCreating || isCreatingChallenge || isStaking ? (
+              "Creating Challenge..."
+            ) : (
+              <>
+                <Send className="w-4 h-4 mr-2" />
+                Create Challenge & Stake
+              </>
+            )}
           </Button>
         </form>
       </CardContent>

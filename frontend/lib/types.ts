@@ -10,22 +10,24 @@ export type Player = {
 
 export type Challenge = {
   id: bigint;
-  author: `0x${string}`;
-  text: string;
-  tokenA: `0x${string}`;
-  tokenB?: `0x${string}`; // undefined until first counter
-  stakeA: bigint;
-  stakeB: bigint;
-  settled: boolean;
-  winnerToken?: `0x${string}`;
-  createdAt: number; // from block timestamp (frontend adds)
+  playerA: `0x${string}`; // Token address for player A
+  playerB: `0x${string}`; // Token address for player B
+  totalStakeA: bigint;
+  totalStakeB: bigint;
+  startTime: bigint;
+  endTime: bigint;
+  resolved: boolean;
+  winner?: `0x${string}`; // Winning player token address
+  description: string;
+  active: boolean;
 };
 
-export type ChallengeStatus = 'Open' | 'Set counter' | 'Settled';
+export type ChallengeStatus = 'Active' | 'Ended' | 'Resolved';
 
 export type UserStake = {
-  stakeA: bigint;
-  stakeB: bigint;
+  amountA: bigint;
+  amountB: bigint;
+  hasStaked: boolean;
 };
 
 export type TokenBalance = {

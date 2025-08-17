@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { ChallengeStatus } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -24,20 +25,20 @@ export function parseNumber(value: string, decimals: number = 18): bigint {
   return BigInt(Math.floor(num * Math.pow(10, decimals)));
 }
 
-export function getChallengeStatus(challenge: any): 'Open' | 'Set counter' | 'Settled' {
-  if (challenge.settled) return 'Settled';
-  if (challenge.tokenB && challenge.tokenB !== '0x0000000000000000000000000000000000000000') return 'Set counter';
-  return 'Open';
+export function getChallengeStatus(challenge: any): ChallengeStatus {
+  if (challenge.resolved) return 'Resolved';
+  if (!challenge.active) return 'Ended';
+  return 'Active';
 }
 
-export function getStatusColor(status: 'Open' | 'Set counter' | 'Settled'): string {
+export function getStatusColor(status: ChallengeStatus): string {
   switch (status) {
-    case 'Open':
-      return 'bg-yellow-100 text-yellow-800';
-    case 'Set counter':
-      return 'bg-blue-100 text-blue-800';
-    case 'Settled':
+    case 'Active':
       return 'bg-green-100 text-green-800';
+    case 'Ended':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'Resolved':
+      return 'bg-blue-100 text-blue-800';
     default:
       return 'bg-gray-100 text-gray-800';
   }

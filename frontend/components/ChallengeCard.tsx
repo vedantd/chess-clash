@@ -10,7 +10,7 @@ import {
   getStatusColor,
   getTimeAgo,
 } from "@/lib/utils";
-import { MessageSquare, Users, Trophy } from "lucide-react";
+import { MessageSquare, Users, Trophy, Clock } from "lucide-react";
 import Link from "next/link";
 
 interface ChallengeCardProps {
@@ -28,27 +28,36 @@ export function ChallengeCard({
   onStakeForB,
   onClaim,
 }: ChallengeCardProps) {
-  const tokenA = players.find((p) => p.tokenAddress === challenge.tokenA);
-  const tokenB = challenge.tokenB
-    ? players.find((p) => p.tokenAddress === challenge.tokenB)
+  const playerA = players.find((p) => p.tokenAddress === challenge.playerA);
+  const playerB = players.find((p) => p.tokenAddress === challenge.playerB);
+  const winner = challenge.winner
+    ? players.find((p) => p.tokenAddress === challenge.winner)
     : null;
+
   const status = getChallengeStatus(challenge);
-  const canClaim = challenge.settled && challenge.winnerToken;
+  const canClaim = challenge.resolved && challenge.winner;
+  const isActive = challenge.active && !challenge.resolved;
+  const isEnded = !challenge.active && !challenge.resolved;
 
   return (
     <Card className="w-full hover:shadow-md transition-shadow">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-lg mb-2">{challenge.text}</CardTitle>
+            <CardTitle className="text-lg mb-2">
+              {challenge.description}
+            </CardTitle>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
-                <MessageSquare className="h-4 w-4" />
-                {formatAddress(challenge.author)}
+                <Clock className="h-4 w-4" />
+                {getTimeAgo(Number(challenge.startTime))}
               </div>
               <div className="flex items-center gap-1">
                 <Users className="h-4 w-4" />
-                {getTimeAgo(challenge.createdAt)}
+                {formatNumber(
+                  challenge.totalStakeA + challenge.totalStakeB
+                )}{" "}
+                total staked
               </div>
             </div>
           </div>
@@ -63,16 +72,16 @@ export function ChallengeCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Token vs Token display */}
+        {/* Player A vs Player B display */}
         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
               A
             </div>
             <div>
-              <div className="font-medium">{tokenA?.symbol || "Unknown"}</div>
+              <div className="font-medium">{playerA?.name || "Unknown"}</div>
               <div className="text-xs text-muted-foreground">
-                {formatNumber(challenge.stakeA)} staked
+                {formatNumber(challenge.totalStakeA)} staked
               </div>
             </div>
           </div>
@@ -84,24 +93,20 @@ export function ChallengeCard({
               B
             </div>
             <div className="text-right">
-              <div className="font-medium">
-                {tokenB?.symbol || (status === "Open" ? "Choose..." : "None")}
-              </div>
+              <div className="font-medium">{playerB?.name || "Unknown"}</div>
               <div className="text-xs text-muted-foreground">
-                {formatNumber(challenge.stakeB)} staked
+                {formatNumber(challenge.totalStakeB)} staked
               </div>
             </div>
           </div>
         </div>
 
         {/* Winner display */}
-        {challenge.settled && challenge.winnerToken && (
+        {challenge.resolved && challenge.winner && winner && (
           <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
             <Trophy className="h-4 w-4 text-green-600" />
             <span className="text-sm font-medium text-green-800">
-              Winner:{" "}
-              {players.find((p) => p.tokenAddress === challenge.winnerToken)
-                ?.symbol || "Unknown"}
+              Winner: {winner.name}
             </span>
           </div>
         )}
@@ -114,24 +119,23 @@ export function ChallengeCard({
             </Button>
           </Link>
 
-          {!challenge.settled && (
+          {isActive && (
             <>
               {onStakeForA && (
-                <Button onClick={onStakeForA} variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={onStakeForA}>
                   Stake A
                 </Button>
               )}
-
               {onStakeForB && (
-                <Button onClick={onStakeForB} variant="outline" size="sm">
-                  {status === "Open" ? "Counter" : "Stake B"}
+                <Button variant="outline" size="sm" onClick={onStakeForB}>
+                  Stake B
                 </Button>
               )}
             </>
           )}
 
           {canClaim && onClaim && (
-            <Button onClick={onClaim} variant="default" size="sm">
+            <Button variant="default" size="sm" onClick={onClaim}>
               Claim
             </Button>
           )}

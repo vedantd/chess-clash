@@ -1,6 +1,8 @@
 export const CONTRACTS = {
   FACTORY_ADDR: process.env.NEXT_PUBLIC_FACTORY_ADDR as `0x${string}`,
   ESCROW_ADDR: process.env.NEXT_PUBLIC_ESCROW_ADDR as `0x${string}`,
+  ORACLE_ADDR: process.env.NEXT_PUBLIC_ORACLE_ADDR as `0x${string}`,
+  AMM_ROUTER_ADDR: process.env.NEXT_PUBLIC_AMM_ROUTER_ADDR as `0x${string}`,
   USDC_ADDR: process.env.NEXT_PUBLIC_USDC_ADDR as `0x${string}`,
   SWAP_ADAPTER_ADDR: process.env.NEXT_PUBLIC_SWAP_ADAPTER_ADDR as `0x${string}`,
 } as const;

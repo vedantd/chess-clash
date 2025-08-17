@@ -20,8 +20,6 @@ import { formatNumber, getChallengeStatus, getStatusColor } from "@/lib/utils";
 import { Gavel, Shield } from "lucide-react";
 import toast from "react-hot-toast";
 
-import ChallengeEscrowABI from "@/lib/contracts/abis/ChallengeEscrow.json";
-
 export default function AdminPage() {
   const { account } = useEmbeddedWallet();
   const address = account?.address;
@@ -30,15 +28,17 @@ export default function AdminPage() {
   const [isResolving, setIsResolving] = useState<string | null>(null);
 
   const { data: ownerAddress } = useIsOwner();
-  const { resolveChallenge } = useResolveChallenge();
+  const { resolveChallenge, isResolving: isResolvingChallenge } =
+    useResolveChallenge();
 
   const isOwner =
     address &&
     ownerAddress &&
     address.toLowerCase() === ownerAddress.toLowerCase();
 
-  const openChallenges = Array.from(challenges.values()).filter(
-    (challenge) => !challenge.settled && challenge.tokenB
+  // Filter challenges that are ended but not resolved
+  const endedChallenges = Array.from(challenges.values()).filter(
+    (challenge) => !challenge.active && !challenge.resolved
   );
 
   const handleResolve = async (challengeId: bigint) => {
@@ -48,17 +48,27 @@ export default function AdminPage() {
     }
 
     const challenge = challenges.get(challengeId.toString());
-    if (!challenge || !challenge.tokenB) {
-      toast.error("Challenge not found or counter not set");
+    if (!challenge) {
+      toast.error("Challenge not found");
+      return;
+    }
+
+    if (challenge.active) {
+      toast.error("Challenge is still active");
+      return;
+    }
+
+    if (challenge.resolved) {
+      toast.error("Challenge already resolved");
       return;
     }
 
     setIsResolving(challengeId.toString());
     try {
       const winnerToken =
-        selectedWinner === "A" ? challenge.tokenA : challenge.tokenB;
+        selectedWinner === "A" ? challenge.playerA : challenge.playerB;
 
-      await resolveChallenge(challengeId, winnerToken, 0n, 0n); // minOut params set to 0 for demo
+      await resolveChallenge(challengeId, winnerToken);
 
       toast.success(`Challenge resolved! Winner: ${selectedWinner}`);
     } catch (error) {
@@ -73,13 +83,13 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <div className="text-center">
             <p className="text-muted-foreground">
               Please connect your wallet to access admin panel
             </p>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -88,7 +98,7 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <div className="text-center">
             <Shield className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
             <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
@@ -96,7 +106,7 @@ export default function AdminPage() {
               Only the contract owner can access this page
             </p>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -104,123 +114,143 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Gavel className="h-8 w-8" />
-            Admin Panel
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Resolve challenges and manage the platform
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Admin Panel</h1>
+          <p className="text-muted-foreground">
+            Resolve ended challenges and manage the platform
           </p>
         </div>
 
-        {openChallenges.length === 0 ? (
+        <div className="space-y-6">
+          {/* Ended Challenges */}
           <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">
-                No challenges ready for resolution
-              </p>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Gavel className="h-5 w-5" />
+                Ended Challenges ({endedChallenges.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {endedChallenges.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No ended challenges to resolve
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {endedChallenges.map((challenge) => {
+                    const playerA = players.find(
+                      (p) => p.tokenAddress === challenge.playerA
+                    );
+                    const playerB = players.find(
+                      (p) => p.tokenAddress === challenge.playerB
+                    );
+
+                    return (
+                      <div
+                        key={challenge.id.toString()}
+                        className="border rounded-lg p-4 space-y-4"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-medium mb-2">
+                              {challenge.description}
+                            </h3>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span>
+                                {playerA?.name} vs {playerB?.name}
+                              </span>
+                              <span>
+                                Total staked:{" "}
+                                {formatNumber(
+                                  challenge.totalStakeA + challenge.totalStakeB
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                              getChallengeStatus(challenge)
+                            )}`}
+                          >
+                            {getChallengeStatus(challenge)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <Select
+                            value={selectedWinner}
+                            onValueChange={(value: "A" | "B") =>
+                              setSelectedWinner(value)
+                            }
+                          >
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="A">
+                                {playerA?.name} (A)
+                              </SelectItem>
+                              <SelectItem value="B">
+                                {playerB?.name} (B)
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Button
+                            onClick={() => handleResolve(challenge.id)}
+                            disabled={
+                              isResolving === challenge.id.toString() ||
+                              isResolvingChallenge
+                            }
+                            size="sm"
+                          >
+                            {isResolving === challenge.id.toString() ||
+                            isResolvingChallenge
+                              ? "Resolving..."
+                              : "Resolve"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-6">
-            {openChallenges.map((challenge) => {
-              const tokenA = players.find(
-                (p) => p.tokenAddress === challenge.tokenA
-              );
-              const tokenB = players.find(
-                (p) => p.tokenAddress === challenge.tokenB
-              );
-              const status = getChallengeStatus(challenge);
 
-              return (
-                <Card key={challenge.id.toString()}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>Challenge #{challenge.id.toString()}</span>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                          status
-                        )}`}
-                      >
-                        {status}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="text-lg font-medium mb-2">
-                        {challenge.text}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Author: {challenge.author}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <div className="font-medium text-blue-900">
-                          Side A: {tokenA?.symbol}
-                        </div>
-                        <div className="text-sm text-blue-700">
-                          {formatNumber(challenge.stakeA)} staked
-                        </div>
-                      </div>
-                      <div className="p-3 bg-red-50 rounded-lg">
-                        <div className="font-medium text-red-900">
-                          Side B: {tokenB?.symbol}
-                        </div>
-                        <div className="text-sm text-red-700">
-                          {formatNumber(challenge.stakeB)} staked
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          Select Winner:
-                        </span>
-                        <Select
-                          value={selectedWinner}
-                          onValueChange={(value: "A" | "B") =>
-                            setSelectedWinner(value)
-                          }
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="A">
-                              Side A ({tokenA?.symbol})
-                            </SelectItem>
-                            <SelectItem value="B">
-                              Side B ({tokenB?.symbol})
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <Button
-                        onClick={() => handleResolve(challenge.id)}
-                        disabled={isResolving === challenge.id.toString()}
-                        className="flex items-center gap-2"
-                      >
-                        <Gavel className="h-4 w-4" />
-                        {isResolving === challenge.id.toString()
-                          ? "Resolving..."
-                          : "Resolve Challenge"}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </main>
+          {/* Contract Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Contract Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Contract Address:
+                  </span>
+                  <span className="font-mono">
+                    {formatAddress(CONTRACTS.ESCROW_ADDR)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Owner:</span>
+                  <span className="font-mono">
+                    {ownerAddress ? formatAddress(ownerAddress) : "Loading..."}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Total Challenges:
+                  </span>
+                  <span>{challenges.size}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -11,6 +11,11 @@ import PlayerTokenABI from './abis/PlayerToken.json';
 import PlayerTokenFactoryABI from './abis/PlayerTokenFactory.json';
 import ChallengeEscrowABI from './abis/ChallengeEscrow.json';
 
+// Use the ABIs directly since they are already arrays
+const playerTokenABI = PlayerTokenABI as any;
+const playerTokenFactoryABI = PlayerTokenFactoryABI as any;
+const challengeEscrowABI = ChallengeEscrowABI as any;
+
 // Helper function for async data
 function useAsyncData<T>(fn: () => Promise<T>, deps: any[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -52,11 +57,18 @@ export const useGetIsSignedIn = () => {
 export const useGetAllPlayers = () => {
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
     try {
-      return await publicClient.readContract({
+      console.log('Fetching players from factory:', CONTRACTS.FACTORY_ADDR);
+      console.log('Using ABI:', playerTokenFactoryABI);
+      
+      const result = await publicClient.readContract({
         address: CONTRACTS.FACTORY_ADDR,
-        abi: PlayerTokenFactoryABI,
+        abi: playerTokenFactoryABI,
         functionName: 'getAllPlayers',
+        args: [],
       });
+      
+      console.log('Players fetched successfully:', result);
+      return result;
     } catch (err) {
       console.error('Error fetching players:', err);
       return [];
@@ -77,7 +89,7 @@ export const useTokenBalance = (tokenAddress: `0x${string}`, userAddress?: `0x${
     try {
       return await publicClient.readContract({
         address: tokenAddress,
-        abi: PlayerTokenABI,
+        abi: playerTokenABI,
         functionName: 'balanceOf',
         args: [targetAddress],
       });
@@ -100,7 +112,7 @@ export const useTokenAllowance = (tokenAddress: `0x${string}`, spender: `0x${str
     try {
       return await publicClient.readContract({
         address: tokenAddress,
-        abi: PlayerTokenABI,
+        abi: playerTokenABI,
         functionName: 'allowance',
         args: [targetAddress, spender],
       });
@@ -123,7 +135,7 @@ export const useFaucetMint = () => {
       account: account,
       to: tokenAddress,
       data: encodeFunctionData({
-        abi: PlayerTokenABI,
+        abi: playerTokenABI,
         functionName: 'faucetMint',
         args: [amount],
       }),
@@ -142,7 +154,7 @@ export const useApproveToken = () => {
       account: account,
       to: tokenAddress,
       data: encodeFunctionData({
-        abi: PlayerTokenABI,
+        abi: playerTokenABI,
         functionName: 'approve',
         args: [spender, amount],
       }),
@@ -152,175 +164,223 @@ export const useApproveToken = () => {
   return { approve };
 };
 
-export const useCreateChallenge = () => {
-  const { walletClient, account } = useEmbeddedWallet();
-
-  const createChallenge = async (tokenA: `0x${string}`, text: string) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
-    return await walletClient.sendTransaction({
-      account: account,
-      to: CONTRACTS.ESCROW_ADDR,
-      data: encodeFunctionData({
-        abi: ChallengeEscrowABI,
-        functionName: 'createChallenge',
-        args: [tokenA, text],
-      }),
-      chain: baseSepolia,
-    });
-  };
-  return { createChallenge };
-};
-
-export const useStakeForA = () => {
-  const { walletClient, account } = useEmbeddedWallet();
-
-  const stakeForA = async (challengeId: bigint, amount: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
-    return await walletClient.sendTransaction({
-      account: account,
-      to: CONTRACTS.ESCROW_ADDR,
-      data: encodeFunctionData({
-        abi: ChallengeEscrowABI,
-        functionName: 'stakeForA',
-        args: [challengeId, amount],
-      }),
-      chain: baseSepolia,
-    });
-  };
-  return { stakeForA };
-};
-
-export const useStakeForB = () => {
-  const { walletClient, account } = useEmbeddedWallet();
-
-  const stakeForB = async (challengeId: bigint, tokenB: `0x${string}`, amount: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
-    return await walletClient.sendTransaction({
-      account: account,
-      to: CONTRACTS.ESCROW_ADDR,
-      data: encodeFunctionData({
-        abi: ChallengeEscrowABI,
-        functionName: 'stakeForB',
-        args: [challengeId, tokenB, amount],
-      }),
-      chain: baseSepolia,
-    });
-  };
-  return { stakeForB };
-};
-
-export const useResolveChallenge = () => {
-  const { walletClient, account } = useEmbeddedWallet();
-
-  const resolveChallenge = async (challengeId: bigint, winnerToken: `0x${string}`, minOutB2USDC: bigint, minOutUSDC2Win: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
-    return await walletClient.sendTransaction({
-      account: account,
-      to: CONTRACTS.ESCROW_ADDR,
-      data: encodeFunctionData({
-        abi: ChallengeEscrowABI,
-        functionName: 'resolve',
-        args: [challengeId, winnerToken, minOutB2USDC, minOutUSDC2Win],
-      }),
-      chain: baseSepolia,
-    });
-  };
-  return { resolveChallenge };
-};
-
-export const useClaimChallenge = () => {
-  const { walletClient, account } = useEmbeddedWallet();
-
-  const claimChallenge = async (challengeId: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
-    return await walletClient.sendTransaction({
-      account: account,
-      to: CONTRACTS.ESCROW_ADDR,
-      data: encodeFunctionData({
-        abi: ChallengeEscrowABI,
-        functionName: 'claim',
-        args: [challengeId],
-      }),
-      chain: baseSepolia,
-    });
-  };
-  return { claimChallenge };
-};
-
-// Read contract hooks
-export const useGetChallenge = (id: bigint) => {
+// Challenge hooks
+export const useGetChallenge = (challengeId: bigint) => {
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
     try {
       return await publicClient.readContract({
         address: CONTRACTS.ESCROW_ADDR,
-        abi: ChallengeEscrowABI,
-        functionName: 'challenges',
-        args: [id],
+        abi: challengeEscrowABI,
+        functionName: 'getChallenge',
+        args: [challengeId],
       });
     } catch (err) {
       console.error('Error fetching challenge:', err);
       return null;
     }
-  }, [id]);
+  }, [challengeId]);
+
   return { data, isLoading, error, refetch };
 };
 
-export const useGetUserStakeA = (id: bigint, userAddress?: `0x${string}`) => {
+export const useGetUserStake = (challengeId: bigint, userAddress?: `0x${string}`) => {
   const { account } = useEmbeddedWallet();
   const targetAddress = userAddress || account?.address;
   
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
-    if (!targetAddress) return 0n;
+    if (!targetAddress) return null;
     
     try {
       return await publicClient.readContract({
         address: CONTRACTS.ESCROW_ADDR,
-        abi: ChallengeEscrowABI,
-        functionName: 'stakeByUserA',
-        args: [id, targetAddress],
+        abi: challengeEscrowABI,
+        functionName: 'getUserStake',
+        args: [challengeId, targetAddress],
       });
     } catch (err) {
-      console.error('Error fetching user stake A:', err);
-      return 0n;
-    }
-  }, [id, targetAddress]);
-  return { data, isLoading, error, refetch };
-};
-
-export const useGetUserStakeB = (id: bigint, userAddress?: `0x${string}`) => {
-  const { account } = useEmbeddedWallet();
-  const targetAddress = userAddress || account?.address;
-  
-  const { data, isLoading, error, refetch } = useAsyncData(async () => {
-    if (!targetAddress) return 0n;
-    
-    try {
-      return await publicClient.readContract({
-        address: CONTRACTS.ESCROW_ADDR,
-        abi: ChallengeEscrowABI,
-        functionName: 'stakeByUserB',
-        args: [id, targetAddress],
-      });
-    } catch (err) {
-      console.error('Error fetching user stake B:', err);
-      return 0n;
-    }
-  }, [id, targetAddress]);
-  return { data, isLoading, error, refetch };
-};
-
-export const useIsOwner = () => {
-  const { data, isLoading, error, refetch } = useAsyncData(async () => {
-    try {
-      return await publicClient.readContract({
-        address: CONTRACTS.ESCROW_ADDR,
-        abi: ChallengeEscrowABI,
-        functionName: 'owner',
-      });
-    } catch (err) {
-      console.error('Error fetching owner:', err);
+      console.error('Error fetching user stake:', err);
       return null;
     }
-  });
+  }, [challengeId, targetAddress]);
+
   return { data, isLoading, error, refetch };
+};
+
+export const useTotalChallenges = () => {
+  const { data, isLoading, error, refetch } = useAsyncData(async () => {
+    try {
+      return await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'totalChallenges',
+        args: [],
+      });
+    } catch (err) {
+      console.error('Error fetching total challenges:', err);
+      return 0n;
+    }
+  });
+
+  return { data, isLoading, error, refetch };
+};
+
+// Challenge creation and staking hooks
+export const useCreateChallenge = () => {
+  const { walletClient, account } = useEmbeddedWallet();
+  const [isCreating, setIsCreating] = useState(false);
+
+  const createChallenge = useCallback(async (
+    playerA: `0x${string}`,
+    playerB: `0x${string}`,
+    description: string,
+    duration: bigint
+  ) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsCreating(true);
+    try {
+      const data = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'createChallenge',
+        args: [playerA, playerB, description, duration],
+      });
+
+      const hash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data,
+        chain: baseSepolia,
+      });
+
+      return hash;
+    } finally {
+      setIsCreating(false);
+    }
+  }, [walletClient, account]);
+
+  return { createChallenge, isCreating };
+};
+
+export const useStakeForA = () => {
+  const { walletClient, account } = useEmbeddedWallet();
+  const [isStaking, setIsStaking] = useState(false);
+
+  const stakeForA = useCallback(async (challengeId: bigint, amount: bigint) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsStaking(true);
+    try {
+      const data = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'stakeForA',
+        args: [challengeId, amount],
+      });
+
+      const hash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data,
+        chain: baseSepolia,
+      });
+
+      return hash;
+    } finally {
+      setIsStaking(false);
+    }
+  }, [walletClient, account]);
+
+  return { stakeForA, isStaking };
+};
+
+export const useStakeForB = () => {
+  const { walletClient, account } = useEmbeddedWallet();
+  const [isStaking, setIsStaking] = useState(false);
+
+  const stakeForB = useCallback(async (challengeId: bigint, amount: bigint) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsStaking(true);
+    try {
+      const data = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'stakeForB',
+        args: [challengeId, amount],
+      });
+
+      const hash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data,
+        chain: baseSepolia,
+      });
+
+      return hash;
+    } finally {
+      setIsStaking(false);
+    }
+  }, [walletClient, account]);
+
+  return { stakeForB, isStaking };
+};
+
+export const useResolveChallenge = () => {
+  const { walletClient, account } = useEmbeddedWallet();
+  const [isResolving, setIsResolving] = useState(false);
+
+  const resolveChallenge = useCallback(async (challengeId: bigint, winnerToken: `0x${string}`) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsResolving(true);
+    try {
+      const data = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'resolveChallenge',
+        args: [challengeId, winnerToken],
+      });
+
+      const hash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data,
+        chain: baseSepolia,
+      });
+
+      return hash;
+    } finally {
+      setIsResolving(false);
+    }
+  }, [walletClient, account]);
+
+  return { resolveChallenge, isResolving };
+};
+
+export const useClaimTokens = () => {
+  const { walletClient, account } = useEmbeddedWallet();
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const claimTokens = useCallback(async (challengeId: bigint) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsClaiming(true);
+    try {
+      const data = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'claimWinnings',
+        args: [challengeId],
+      });
+
+      const hash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data,
+        chain: baseSepolia,
+      });
+
+      return hash;
+    } finally {
+      setIsClaiming(false);
+    }
+  }, [walletClient, account]);
+
+  return { claimTokens, isClaiming };
 }; 

@@ -17,9 +17,8 @@ import {
   useGetChallenge,
   useStakeForA,
   useStakeForB,
-  useClaimChallenge,
-  useGetUserStakeA,
-  useGetUserStakeB,
+  useClaimTokens,
+  useGetUserStake,
 } from "@/lib/contracts/hooks";
 import { useEmbeddedWallet } from "@/components/WagmiProvider";
 import { CONTRACTS } from "@/lib/contracts/addresses";
@@ -33,11 +32,9 @@ import {
   getTimeAgo,
   parseNumber,
 } from "@/lib/utils";
-import { ArrowLeft, Trophy, Users, MessageSquare } from "lucide-react";
+import { ArrowLeft, Trophy, Users, Clock } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-
-import ChallengeEscrowABI from "@/lib/contracts/abis/ChallengeEscrow.json";
 
 export default function ChallengeDetailPage() {
   const params = useParams();
@@ -46,7 +43,6 @@ export default function ChallengeDetailPage() {
   const { players } = useAppStore();
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [stakeAmount, setStakeAmount] = useState("");
-  const [selectedTokenB, setSelectedTokenB] = useState("");
   const [isStaking, setIsStaking] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
 
@@ -54,94 +50,103 @@ export default function ChallengeDetailPage() {
 
   const { data: challengeData, isLoading: isLoadingChallenge } =
     useGetChallenge(challengeId);
-  const { data: userStakeA } = useGetUserStakeA(challengeId, address);
-  const { data: userStakeB } = useGetUserStakeB(challengeId, address);
+  const { data: userStake } = useGetUserStake(challengeId, address);
 
-  const { stakeForA } = useStakeForA();
-  const { stakeForB } = useStakeForB();
-  const { claimChallenge } = useClaimChallenge();
+  const { stakeForA, isStaking: isStakingA } = useStakeForA();
+  const { stakeForB, isStaking: isStakingB } = useStakeForB();
+  const { claimTokens, isClaiming } = useClaimTokens();
 
   // Load challenge data
   useEffect(() => {
     if (challengeData && !isLoadingChallenge) {
       const formattedChallenge: Challenge = {
         id: challengeData.id,
-        author: challengeData.author,
-        text: challengeData.text,
-        tokenA: challengeData.tokenA,
-        tokenB:
-          challengeData.tokenB !== "0x0000000000000000000000000000000000000000"
-            ? challengeData.tokenB
+        playerA: challengeData.playerA,
+        playerB: challengeData.playerB,
+        totalStakeA: challengeData.totalStakeA,
+        totalStakeB: challengeData.totalStakeB,
+        startTime: challengeData.startTime,
+        endTime: challengeData.endTime,
+        resolved: challengeData.resolved,
+        winner:
+          challengeData.winner !== "0x0000000000000000000000000000000000000000"
+            ? challengeData.winner
             : undefined,
-        stakeA: challengeData.stakeA,
-        stakeB: challengeData.stakeB,
-        settled: challengeData.settled,
-        winnerToken:
-          challengeData.winnerToken !==
-          "0x0000000000000000000000000000000000000000"
-            ? challengeData.winnerToken
-            : undefined,
-        createdAt: Date.now() - 3600000, // Mock timestamp
+        description: challengeData.description,
+        active: challengeData.active,
       };
       setChallenge(formattedChallenge);
     }
   }, [challengeData, isLoadingChallenge]);
 
-  const tokenA = players.find((p) => p.tokenAddress === challenge?.tokenA);
-  const tokenB = challenge?.tokenB
-    ? players.find((p) => p.tokenAddress === challenge.tokenB)
+  const playerA = players.find((p) => p.tokenAddress === challenge?.playerA);
+  const playerB = players.find((p) => p.tokenAddress === challenge?.playerB);
+  const winner = challenge?.winner
+    ? players.find((p) => p.tokenAddress === challenge.winner)
     : null;
-  const status = challenge ? getChallengeStatus(challenge) : "Open";
+
+  const status = challenge ? getChallengeStatus(challenge) : "Active";
   const canClaim =
-    challenge?.settled &&
-    challenge?.winnerToken &&
-    ((userStakeA && userStakeA > 0n) || (userStakeB && userStakeB > 0n));
+    challenge?.resolved &&
+    challenge?.winner &&
+    userStake?.hasStaked &&
+    (userStake.amountA > 0n || userStake.amountB > 0n);
+
+  const isActive = challenge?.active && !challenge?.resolved;
 
   const handleStakeForA = async () => {
-    if (!address || !challenge || !stakeAmount) return;
+    if (!address || !stakeAmount || !challenge) {
+      toast.error("Please fill in all fields");
+      return;
+    }
 
     setIsStaking(true);
     try {
       const amount = parseNumber(stakeAmount);
-      await stakeForA(challenge.id, amount);
-      toast.success(`Staked ${stakeAmount} for Side A`);
+      await stakeForA(challengeId, amount);
+      toast.success("Successfully staked for Player A!");
       setStakeAmount("");
     } catch (error) {
       console.error("Stake error:", error);
-      toast.error("Failed to stake");
+      toast.error("Failed to stake for Player A");
     } finally {
       setIsStaking(false);
     }
   };
 
   const handleStakeForB = async () => {
-    if (!address || !challenge || !stakeAmount || !selectedTokenB) return;
+    if (!address || !stakeAmount || !challenge) {
+      toast.error("Please fill in all fields");
+      return;
+    }
 
     setIsStaking(true);
     try {
       const amount = parseNumber(stakeAmount);
-      await stakeForB(challenge.id, selectedTokenB as `0x${string}`, amount);
-      toast.success(`Staked ${stakeAmount} for Side B`);
+      await stakeForB(challengeId, amount);
+      toast.success("Successfully staked for Player B!");
       setStakeAmount("");
-      setSelectedTokenB("");
     } catch (error) {
       console.error("Stake error:", error);
-      toast.error("Failed to stake");
+      toast.error("Failed to stake for Player B");
     } finally {
       setIsStaking(false);
     }
   };
 
   const handleClaim = async () => {
-    if (!address || !challenge) return;
+    if (!address || !challenge) {
+      toast.error("Cannot claim");
+      return;
+    }
 
     setIsClaiming(true);
     try {
-      await claimChallenge(challenge.id);
-      toast.success("Winnings claimed successfully!");
+      await claimTokens(challengeId);
+      toast.success("Successfully claimed tokens!");
     } catch (error) {
       console.error("Claim error:", error);
-      toast.error("Failed to claim winnings");
+      toast.error("Failed to claim tokens");
     } finally {
       setIsClaiming(false);
     }
@@ -151,12 +156,12 @@ export default function ChallengeDetailPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-2 text-muted-foreground">Loading challenge...</p>
+        <div className="container mx-auto px-4 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -165,11 +170,14 @@ export default function ChallengeDetailPage() {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <div className="text-center">
-            <p className="text-muted-foreground">Challenge not found</p>
+            <h1 className="text-2xl font-bold mb-4">Challenge Not Found</h1>
+            <Link href="/">
+              <Button>Back to Home</Button>
+            </Link>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -177,207 +185,216 @@ export default function ChallengeDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-
-      <main className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
         <div className="mb-6">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Feed
+            Back to Challenges
           </Link>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">
+                {challenge.description}
+              </h1>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  {getTimeAgo(Number(challenge.startTime))}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Users className="h-4 w-4" />
+                  {formatNumber(
+                    challenge.totalStakeA + challenge.totalStakeB
+                  )}{" "}
+                  total staked
+                </div>
+              </div>
+            </div>
+            <span
+              className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                status
+              )}`}
+            >
+              {status}
+            </span>
+          </div>
         </div>
 
-        <div className="max-w-4xl mx-auto space-y-6">
-          {/* Challenge Header */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-2xl mb-2">
-                    {challenge.text}
-                  </CardTitle>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <MessageSquare className="h-4 w-4" />
-                      {formatAddress(challenge.author)}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      {getTimeAgo(challenge.createdAt)}
-                    </div>
-                  </div>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                    status
-                  )}`}
-                >
-                  {status}
-                </span>
-              </div>
-            </CardHeader>
-          </Card>
-
-          {/* Token Comparison */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Challenge Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Players vs Players */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                    A
-                  </div>
-                  Side A: {tokenA?.symbol}
-                </CardTitle>
+                <CardTitle>Challenge Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-2xl font-bold text-blue-600">
-                  {formatNumber(challenge.stakeA)} {tokenA?.symbol}
+              <CardContent>
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
+                      A
+                    </div>
+                    <div>
+                      <div className="font-semibold text-lg">
+                        {playerA?.name || "Unknown"}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatNumber(challenge.totalStakeA)} staked
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-3xl font-bold text-muted-foreground">
+                    VS
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="font-semibold text-lg">
+                        {playerB?.name || "Unknown"}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {formatNumber(challenge.totalStakeB)} staked
+                      </div>
+                    </div>
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-bold text-lg">
+                      B
+                    </div>
+                  </div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Total staked
-                </div>
-                {userStakeA && userStakeA > 0n && (
-                  <div className="text-sm">
-                    Your stake: {formatNumber(userStakeA)} {tokenA?.symbol}
+
+                {/* Winner display */}
+                {challenge.resolved && challenge.winner && winner && (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg mt-4">
+                    <Trophy className="h-5 w-5 text-green-600" />
+                    <span className="text-lg font-medium text-green-800">
+                      Winner: {winner.name}
+                    </span>
                   </div>
                 )}
+
+                {/* Challenge timeline */}
+                <div className="mt-6 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Start Time:</span>
+                    <span>
+                      {new Date(
+                        Number(challenge.startTime) * 1000
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">End Time:</span>
+                    <span>
+                      {new Date(
+                        Number(challenge.endTime) * 1000
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Status:</span>
+                    <span className="capitalize">{status.toLowerCase()}</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center text-red-600 font-bold">
-                    B
+            {/* User Stake Information */}
+            {userStake?.hasStaked && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Stake</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {userStake.amountA > 0n && (
+                      <div className="flex justify-between">
+                        <span>Staked for {playerA?.name}:</span>
+                        <span className="font-medium">
+                          {formatNumber(userStake.amountA)} {playerA?.symbol}
+                        </span>
+                      </div>
+                    )}
+                    {userStake.amountB > 0n && (
+                      <div className="flex justify-between">
+                        <span>Staked for {playerB?.name}:</span>
+                        <span className="font-medium">
+                          {formatNumber(userStake.amountB)} {playerB?.symbol}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  Side B: {tokenB?.symbol || "Not set"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-2xl font-bold text-red-600">
-                  {formatNumber(challenge.stakeB)} {tokenB?.symbol || "tokens"}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Total staked
-                </div>
-                {userStakeB && userStakeB > 0n && (
-                  <div className="text-sm">
-                    Your stake: {formatNumber(userStakeB)} {tokenB?.symbol}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Winner Display */}
-          {challenge.settled && challenge.winnerToken && (
-            <Card className="border-green-200 bg-green-50">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 text-green-800">
-                  <Trophy className="h-5 w-5" />
-                  <span className="font-medium">
-                    Winner:{" "}
-                    {players.find(
-                      (p) => p.tokenAddress === challenge.winnerToken
-                    )?.symbol || "Unknown"}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Action Panel */}
+          <div className="space-y-6">
+            {/* Staking Panel */}
+            {isActive && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Stake on Challenge</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Stake Amount
+                    </label>
+                    <Input
+                      type="number"
+                      value={stakeAmount}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                      placeholder="0.0"
+                    />
+                  </div>
 
-          {/* Staking Actions */}
-          {!challenge.settled && address && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Stake on this Challenge</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-4">
-                  <Input
-                    type="number"
-                    value={stakeAmount}
-                    onChange={(e) => setStakeAmount(e.target.value)}
-                    placeholder="Amount to stake"
-                    className="flex-1"
-                  />
-
-                  {!challenge.tokenB ? (
-                    <Select
-                      value={selectedTokenB}
-                      onValueChange={setSelectedTokenB}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={handleStakeForA}
+                      disabled={!stakeAmount || isStakingA || isStakingB}
+                      className="w-full"
                     >
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Choose Token B" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {players
-                          .filter((p) => p.tokenAddress !== challenge.tokenA)
-                          .map((player) => (
-                            <SelectItem
-                              key={player.tokenAddress}
-                              value={player.tokenAddress}
-                            >
-                              {player.symbol} - {player.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                </div>
+                      {isStakingA ? "Staking..." : `Stake for ${playerA?.name}`}
+                    </Button>
+                    <Button
+                      onClick={handleStakeForB}
+                      disabled={!stakeAmount || isStakingA || isStakingB}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      {isStakingB ? "Staking..." : `Stake for ${playerB?.name}`}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-                <div className="flex gap-2">
+            {/* Claim Panel */}
+            {canClaim && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Claim Winnings</CardTitle>
+                </CardHeader>
+                <CardContent>
                   <Button
-                    onClick={handleStakeForA}
-                    disabled={isStaking || !stakeAmount}
-                    variant="outline"
-                    className="flex-1"
+                    onClick={handleClaim}
+                    disabled={isClaiming}
+                    className="w-full"
                   >
-                    {isStaking
-                      ? "Staking..."
-                      : `Stake for A (${tokenA?.symbol})`}
+                    {isClaiming ? "Claiming..." : "Claim Tokens"}
                   </Button>
-
-                  <Button
-                    onClick={handleStakeForB}
-                    disabled={
-                      isStaking ||
-                      !stakeAmount ||
-                      (!challenge.tokenB && !selectedTokenB)
-                    }
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    {isStaking
-                      ? "Staking..."
-                      : challenge.tokenB
-                      ? `Stake for B (${tokenB?.symbol})`
-                      : "Counter with B"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Claim Button */}
-          {canClaim && (
-            <Card>
-              <CardContent className="pt-6">
-                <Button
-                  onClick={handleClaim}
-                  disabled={isClaiming}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isClaiming ? "Claiming..." : "Claim Winnings"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
