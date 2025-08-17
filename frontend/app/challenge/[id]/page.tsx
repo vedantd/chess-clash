@@ -2,78 +2,70 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   useGetChallenge,
-  useStakeForA,
-  useStakeForB,
-  useClaimTokens,
   useGetUserStake,
+  useApproveAndStakeForA,
+  useApproveAndStakeForB,
+  useClaimTokens,
 } from "@/lib/contracts/hooks";
-import { useEmbeddedWallet } from "@/components/WagmiProvider";
-import { CONTRACTS } from "@/lib/contracts/addresses";
+import { usePrivyAddress } from "@/lib/privy-hooks";
 import { useAppStore } from "@/lib/store";
 import { Challenge, Player } from "@/lib/types";
 import {
-  formatAddress,
   formatNumber,
+  parseNumber,
   getChallengeStatus,
   getStatusColor,
   getTimeAgo,
-  parseNumber,
 } from "@/lib/utils";
 import { ArrowLeft, Trophy, Users, Clock } from "lucide-react";
-import Link from "next/link";
 import toast from "react-hot-toast";
 
 export default function ChallengeDetailPage() {
   const params = useParams();
-  const { account } = useEmbeddedWallet();
-  const address = account?.address;
+  const challengeId = BigInt(params.id as string);
   const { players } = useAppStore();
+  const { address } = usePrivyAddress();
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [stakeAmount, setStakeAmount] = useState("");
   const [isStaking, setIsStaking] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
 
-  const challengeId = BigInt(params.id as string);
-
   const { data: challengeData, isLoading: isLoadingChallenge } =
     useGetChallenge(challengeId);
   const { data: userStake } = useGetUserStake(challengeId, address);
 
-  const { stakeForA, isStaking: isStakingA } = useStakeForA();
-  const { stakeForB, isStaking: isStakingB } = useStakeForB();
-  const { claimTokens, isClaiming } = useClaimTokens();
+  const { approveAndStakeForA, isProcessing: isStakingA } =
+    useApproveAndStakeForA();
+  const { approveAndStakeForB, isProcessing: isStakingB } =
+    useApproveAndStakeForB();
+  const { claimTokens, isClaiming: isClaimingFromHook } = useClaimTokens();
 
   // Load challenge data
   useEffect(() => {
     if (challengeData && !isLoadingChallenge) {
       const formattedChallenge: Challenge = {
-        id: challengeData.id,
-        playerA: challengeData.playerA,
-        playerB: challengeData.playerB,
-        totalStakeA: challengeData.totalStakeA,
-        totalStakeB: challengeData.totalStakeB,
-        startTime: challengeData.startTime,
-        endTime: challengeData.endTime,
-        resolved: challengeData.resolved,
+        id: (challengeData as any).id,
+        playerA: (challengeData as any).playerA,
+        playerB: (challengeData as any).playerB,
+        totalStakeA: (challengeData as any).totalStakeA,
+        totalStakeB: (challengeData as any).totalStakeB,
+        startTime: (challengeData as any).startTime,
+        endTime: (challengeData as any).endTime,
+        resolved: (challengeData as any).resolved,
         winner:
-          challengeData.winner !== "0x0000000000000000000000000000000000000000"
-            ? challengeData.winner
+          (challengeData as any).winner !==
+          "0x0000000000000000000000000000000000000000"
+            ? (challengeData as any).winner
             : undefined,
-        description: challengeData.description,
-        active: challengeData.active,
+        description: (challengeData as any).description,
+        active: (challengeData as any).active,
       };
       setChallenge(formattedChallenge);
     }
@@ -89,8 +81,8 @@ export default function ChallengeDetailPage() {
   const canClaim =
     challenge?.resolved &&
     challenge?.winner &&
-    userStake?.hasStaked &&
-    (userStake.amountA > 0n || userStake.amountB > 0n);
+    (userStake as any)?.hasStaked &&
+    ((userStake as any)?.amountA > 0n || (userStake as any)?.amountB > 0n);
 
   const isActive = challenge?.active && !challenge?.resolved;
 
@@ -99,11 +91,10 @@ export default function ChallengeDetailPage() {
       toast.error("Please fill in all fields");
       return;
     }
-
     setIsStaking(true);
     try {
       const amount = parseNumber(stakeAmount);
-      await stakeForA(challengeId, amount);
+      await approveAndStakeForA(challengeId, amount);
       toast.success("Successfully staked for Player A!");
       setStakeAmount("");
     } catch (error) {
@@ -119,11 +110,10 @@ export default function ChallengeDetailPage() {
       toast.error("Please fill in all fields");
       return;
     }
-
     setIsStaking(true);
     try {
       const amount = parseNumber(stakeAmount);
-      await stakeForB(challengeId, amount);
+      await approveAndStakeForB(challengeId, amount);
       toast.success("Successfully staked for Player B!");
       setStakeAmount("");
     } catch (error) {
@@ -139,7 +129,6 @@ export default function ChallengeDetailPage() {
       toast.error("Cannot claim");
       return;
     }
-
     setIsClaiming(true);
     try {
       await claimTokens(challengeId);
@@ -304,26 +293,28 @@ export default function ChallengeDetailPage() {
             </Card>
 
             {/* User Stake Information */}
-            {userStake?.hasStaked && (
+            {(userStake as any)?.hasStaked && (
               <Card>
                 <CardHeader>
                   <CardTitle>Your Stake</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {userStake.amountA > 0n && (
+                    {(userStake as any)?.amountA > 0n && (
                       <div className="flex justify-between">
                         <span>Staked for {playerA?.name}:</span>
                         <span className="font-medium">
-                          {formatNumber(userStake.amountA)} {playerA?.symbol}
+                          {formatNumber((userStake as any).amountA)}{" "}
+                          {playerA?.symbol}
                         </span>
                       </div>
                     )}
-                    {userStake.amountB > 0n && (
+                    {(userStake as any)?.amountB > 0n && (
                       <div className="flex justify-between">
                         <span>Staked for {playerB?.name}:</span>
                         <span className="font-medium">
-                          {formatNumber(userStake.amountB)} {playerB?.symbol}
+                          {formatNumber((userStake as any).amountB)}{" "}
+                          {playerB?.symbol}
                         </span>
                       </div>
                     )}
@@ -357,18 +348,21 @@ export default function ChallengeDetailPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       onClick={handleStakeForA}
-                      disabled={!stakeAmount || isStakingA || isStakingB}
+                      disabled={!stakeAmount || isStakingA}
                       className="w-full"
                     >
-                      {isStakingA ? "Staking..." : `Stake for ${playerA?.name}`}
+                      {isStakingA
+                        ? "Approving & Staking..."
+                        : "Approve & Stake for Player A"}
                     </Button>
                     <Button
                       onClick={handleStakeForB}
-                      disabled={!stakeAmount || isStakingA || isStakingB}
-                      variant="outline"
+                      disabled={!stakeAmount || isStakingB}
                       className="w-full"
                     >
-                      {isStakingB ? "Staking..." : `Stake for ${playerB?.name}`}
+                      {isStakingB
+                        ? "Approving & Staking..."
+                        : "Approve & Stake for Player B"}
                     </Button>
                   </div>
                 </CardContent>

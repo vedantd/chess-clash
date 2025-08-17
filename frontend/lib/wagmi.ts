@@ -1,11 +1,11 @@
-import { createPublicClient, http, createWalletClient, custom, type PublicClient, type WalletClient } from 'viem';
+import { createPublicClient, http, type PublicClient } from 'viem';
 import { baseSepolia } from 'viem/chains';
 
 // Create a public client for reading blockchain data
-export const publicClient: PublicClient = createPublicClient({
+export const publicClient = createPublicClient({
   chain: baseSepolia,
   transport: http(),
-});
+}) as PublicClient;
 
 // Simple embedded wallet configuration
 export const EMBEDDED_WALLET_CONFIG = {

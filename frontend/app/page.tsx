@@ -2,13 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { Navigation } from "@/components/Navigation";
-import { ChallengeCard } from "@/components/ChallengeCard";
 import { CreateChallengeForm } from "@/components/CreateChallengeForm";
-import { useGetAllPlayers, useTotalChallenges } from "@/lib/contracts/hooks";
+import { ChallengeCard } from "@/components/ChallengeCard";
+import {
+  useGetAllPlayers,
+  useGetAllChallenges,
+  useGetUserChallenges,
+} from "@/lib/contracts/hooks";
+import { usePrivyAddress } from "@/lib/privy-hooks";
 import { useAppStore } from "@/lib/store";
 import { Player, Challenge } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 export default function HomePage() {
   const {
@@ -21,10 +27,18 @@ export default function HomePage() {
   } = useAppStore();
   const { data: playersData, isLoading: isLoadingPlayersData } =
     useGetAllPlayers();
-  const { data: totalChallenges, refetch: refetchChallenges } = useTotalChallenges();
+  const { address } = usePrivyAddress();
+  const {
+    data: challengesData,
+    isLoading: isLoadingChallengesData,
+    refetch: refetchChallenges,
+  } = useGetAllChallenges();
+  const { data: userChallengesData } = useGetUserChallenges(address);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [usingRealData, setUsingRealData] = useState(false);
+  const [userChallenges, setUserChallenges] = useState<Challenge[]>([]);
 
-  // Load players data
+  // Load players data (unchanged)
   useEffect(() => {
     if (playersData && !isLoadingPlayersData && Array.isArray(playersData)) {
       const formattedPlayers: Player[] = playersData.map((player: any) => ({
@@ -38,11 +52,12 @@ export default function HomePage() {
       setPlayers(formattedPlayers);
       console.log("Loaded real players from testnet:", formattedPlayers);
     } else if (!isLoadingPlayersData && players.length === 0) {
-      // Only use fallback players if we're not loading and have no real data
+      // Only use fallback players for demo purposes if real players aren't loaded
       console.log("No real players found, using fallback data for demo");
       const fallbackPlayers: Player[] = [
         {
-          tokenAddress: "0x1234567890123456789012345678901234567890" as `0x${string}`,
+          tokenAddress:
+            "0x1234567890123456789012345678901234567890" as `0x${string}`,
           name: "Magnus Carlsen",
           symbol: "MAGNUS",
           initialSupply: 1000000n * 10n ** 18n,
@@ -50,7 +65,8 @@ export default function HomePage() {
           faucetCapPerAddr: 1000n * 10n ** 18n,
         },
         {
-          tokenAddress: "0x0987654321098765432109876543210987654321" as `0x${string}`,
+          tokenAddress:
+            "0x0987654321098765432109876543210987654321" as `0x${string}`,
           name: "Gukesh D",
           symbol: "GUKE",
           initialSupply: 1000000n * 10n ** 18n,
@@ -58,7 +74,8 @@ export default function HomePage() {
           faucetCapPerAddr: 1000n * 10n ** 18n,
         },
         {
-          tokenAddress: "0x1111111111111111111111111111111111111111" as `0x${string}`,
+          tokenAddress:
+            "0x1111111111111111111111111111111111111111" as `0x${string}`,
           name: "Hikaru Nakamura",
           symbol: "HIKARU",
           initialSupply: 1000000n * 10n ** 18n,
@@ -66,7 +83,8 @@ export default function HomePage() {
           faucetCapPerAddr: 1000n * 10n ** 18n,
         },
         {
-          tokenAddress: "0x2222222222222222222222222222222222222222" as `0x${string}`,
+          tokenAddress:
+            "0x2222222222222222222222222222222222222222" as `0x${string}`,
           name: "Ding Liren",
           symbol: "DING",
           initialSupply: 1000000n * 10n ** 18n,
@@ -78,55 +96,109 @@ export default function HomePage() {
     }
   }, [playersData, isLoadingPlayersData, setPlayers, players.length]);
 
-  // Load challenges data from contract + mock data for demo
+  // Load user challenges
   useEffect(() => {
-    const loadChallenges = async () => {
+    if (userChallengesData && Array.isArray(userChallengesData)) {
+      const convertedUserChallenges = userChallengesData.map(
+        (challengeData: any) => ({
+          id: challengeData.id,
+          playerA: challengeData.playerA,
+          playerB: challengeData.playerB,
+          totalStakeA: challengeData.totalStakeA,
+          totalStakeB: challengeData.totalStakeB,
+          startTime: challengeData.startTime,
+          endTime: challengeData.endTime,
+          resolved: challengeData.resolved,
+          winner:
+            challengeData.winner !==
+            "0x0000000000000000000000000000000000000000"
+              ? challengeData.winner
+              : undefined,
+          description: challengeData.description,
+          active: challengeData.active,
+          userStake: challengeData.userStake,
+        })
+      );
+      setUserChallenges(convertedUserChallenges);
+    }
+  }, [userChallengesData]);
+
+  // Load challenges from contract or use mock data
+  useEffect(() => {
+    const loadChallenges = () => {
       // Check if we have real challenges from contract
-      if (totalChallenges && typeof totalChallenges === "bigint" && totalChallenges > 0n) {
-        console.log(`Found ${totalChallenges} real challenges on testnet`);
-        
-        // TODO: Load real challenges from contract
-        // For now, we'll show empty state to encourage creating real challenges
-        setChallenges([]);
-        return;
+      if (
+        challengesData &&
+        Array.isArray(challengesData) &&
+        challengesData.length > 0
+      ) {
+        console.log(
+          `Found ${challengesData.length} real challenges on testnet`
+        );
+
+        // Convert contract data to our Challenge type
+        const realChallenges = challengesData.map((challenge: any) => ({
+          id: challenge.id,
+          playerA: challenge.playerA,
+          playerB: challenge.playerB,
+          totalStakeA: challenge.totalStakeA,
+          totalStakeB: challenge.totalStakeB,
+          startTime: challenge.startTime,
+          endTime: challenge.endTime,
+          resolved: challenge.resolved,
+          winner:
+            challenge.winner !== "0x0000000000000000000000000000000000000000"
+              ? challenge.winner
+              : undefined,
+          description: challenge.description,
+          active: challenge.active,
+        }));
+
+        setChallenges(realChallenges);
+        setUsingRealData(true);
+      } else {
+        console.log("No real challenges found, using mock data for demo");
+        const mockChallenges: Challenge[] = [
+          {
+            id: 1n,
+            playerA:
+              "0x1234567890123456789012345678901234567890" as `0x${string}`,
+            playerB:
+              "0x0987654321098765432109876543210987654321" as `0x${string}`,
+            totalStakeA: 8500n * 10n ** 18n, // 8500 MAGNUS tokens
+            totalStakeB: 6200n * 10n ** 18n, // 6200 GUKE tokens
+            startTime: BigInt(Math.floor(Date.now() / 1000) - 3600), // 1 hour ago
+            endTime: BigInt(Math.floor(Date.now() / 1000) + 7200), // 2 hours from now
+            resolved: false,
+            winner: undefined,
+            description:
+              "Magnus Carlsen will win the 2024 World Chess Championship",
+            active: true,
+          },
+          {
+            id: 2n,
+            playerA:
+              "0x1111111111111111111111111111111111111111" as `0x${string}`,
+            playerB:
+              "0x2222222222222222222222222222222222222222" as `0x${string}`,
+            totalStakeA: 4200n * 10n ** 18n, // 4200 HIKARU tokens
+            totalStakeB: 7800n * 10n ** 18n, // 7800 DING tokens
+            startTime: BigInt(Math.floor(Date.now() / 1000) - 7200), // 2 hours ago
+            endTime: BigInt(Math.floor(Date.now() / 1000) - 600), // 10 minutes ago
+            resolved: true,
+            winner:
+              "0x1111111111111111111111111111111111111111" as `0x${string}`,
+            description: "Hikaru Nakamura will reach 3000+ rating in 2024",
+            active: false,
+          },
+        ];
+        setChallenges(mockChallenges);
+        setUsingRealData(false);
       }
-
-      // Only show mock challenges if no real challenges exist
-      console.log("No real challenges found, showing mock data for demo");
-      const mockChallenges: Challenge[] = [
-        {
-          id: 1n,
-          playerA: "0x1234567890123456789012345678901234567890" as `0x${string}`,
-          playerB: "0x0987654321098765432109876543210987654321" as `0x${string}`,
-          totalStakeA: 8500n * 10n ** 18n, // 8500 MAGNUS tokens
-          totalStakeB: 6200n * 10n ** 18n, // 6200 GUKE tokens
-          startTime: BigInt(Math.floor(Date.now() / 1000) - 3600), // 1 hour ago
-          endTime: BigInt(Math.floor(Date.now() / 1000) + 7200), // 2 hours from now
-          resolved: false,
-          winner: undefined,
-          description: "Magnus Carlsen will win the 2024 World Chess Championship",
-          active: true,
-        },
-        {
-          id: 2n,
-          playerA: "0x1111111111111111111111111111111111111111" as `0x${string}`,
-          playerB: "0x2222222222222222222222222222222222222222" as `0x${string}`,
-          totalStakeA: 4200n * 10n ** 18n, // 4200 HIKARU tokens
-          totalStakeB: 7800n * 10n ** 18n, // 7800 DING tokens
-          startTime: BigInt(Math.floor(Date.now() / 1000) - 7200), // 2 hours ago
-          endTime: BigInt(Math.floor(Date.now() / 1000) - 600), // 10 minutes ago
-          resolved: true,
-          winner: "0x1111111111111111111111111111111111111111" as `0x${string}`,
-          description: "Hikaru Nakamura will reach 3000+ rating in 2024",
-          active: false,
-        },
-      ];
-
-      setChallenges(mockChallenges);
     };
 
     loadChallenges();
-  }, [totalChallenges, setChallenges]);
+  }, [challengesData, setChallenges]);
 
   const handleStakeForA = (challengeId: bigint) => {
     // TODO: Implement stake for A functionality
@@ -145,10 +217,11 @@ export default function HomePage() {
 
   const handleRefresh = () => {
     refetchChallenges();
+    console.log("Refreshing challenges...");
   };
 
-  const challengesArray = Array.from(challenges.values()).sort((a, b) =>
-    Number(b.startTime - a.startTime)
+  const challengesArray = Array.from(challenges.values()).sort(
+    (a, b) => Number(b.startTime - a.startTime) // Sorted by startTime
   );
 
   return (
@@ -171,6 +244,25 @@ export default function HomePage() {
           </Button>
         </div>
 
+        {/* Demo Note */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            {usingRealData ? (
+              <>
+                <strong>Testnet Connected:</strong> Found{" "}
+                {challengesData?.length || 0} real challenges on Base Sepolia.
+                Create your own challenge to interact with the live contracts!
+              </>
+            ) : (
+              <>
+                <strong>Demo Mode:</strong> Showing mock challenges for
+                demonstration purposes. Create your own challenge to test the
+                full functionality on testnet!
+              </>
+            )}
+          </p>
+        </div>
+
         {/* Create Challenge Form */}
         {showCreateForm && (
           <div className="mb-8">
@@ -184,7 +276,43 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Challenges List */}
+        {/* My Challenges Section */}
+        {address && userChallenges.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-semibold">
+                My Challenges ({userChallenges.length})
+              </h2>
+              <Link href="/my-challenges">
+                <Button variant="outline" size="sm">
+                  View All
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {userChallenges.slice(0, 3).map((challenge) => (
+                <ChallengeCard
+                  key={challenge.id.toString()}
+                  challenge={challenge}
+                  players={players}
+                  onStakeForA={() => handleStakeForA(challenge.id)}
+                  onStakeForB={() => handleStakeForB(challenge.id)}
+                />
+              ))}
+            </div>
+            {userChallenges.length > 3 && (
+              <div className="text-center mt-4">
+                <Link href="/my-challenges">
+                  <Button variant="outline">
+                    View All {userChallenges.length} Challenges
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* All Challenges Section */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">
@@ -199,23 +327,6 @@ export default function HomePage() {
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
-          </div>
-
-          {/* Demo Note */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
-              {totalChallenges && typeof totalChallenges === "bigint" && totalChallenges > 0n ? (
-                <>
-                  <strong>Testnet Connected:</strong> Found {totalChallenges.toString()} real challenges on Base Sepolia. 
-                  Create your own challenge to interact with the live contracts!
-                </>
-              ) : (
-                <>
-                  <strong>Demo Mode:</strong> Showing mock challenges for demonstration purposes. 
-                  Create your own challenge to test the full functionality on testnet!
-                </>
-              )}
-            </p>
           </div>
 
           {isLoadingChallenges ? (

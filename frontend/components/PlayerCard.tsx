@@ -4,37 +4,29 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Player } from "@/lib/types";
 import {
   useTokenBalance,
   useTokenAllowance,
   useFaucetMint,
   useApproveToken,
 } from "@/lib/contracts/hooks";
-import { useEmbeddedWallet } from "./WagmiProvider";
+import { usePrivyAddress } from "@/lib/privy-hooks";
 import { CONTRACTS } from "@/lib/contracts/addresses";
-import { Player } from "@/lib/types";
-import {
-  formatNumber,
-  formatAddress,
-  parseNumber,
-  getPlayerImage,
-} from "@/lib/utils";
-import { Copy, Zap, Check } from "lucide-react";
+import { formatNumber, parseNumber, getPlayerImage } from "@/lib/utils";
+import { Coins, Zap, Check } from "lucide-react";
 import toast from "react-hot-toast";
-
-import PlayerTokenABI from "@/lib/contracts/abis/PlayerToken.json";
 
 interface PlayerCardProps {
   player: Player;
 }
 
 export function PlayerCard({ player }: PlayerCardProps) {
-  const { account } = useEmbeddedWallet();
-  const address = account?.address;
-  const [faucetAmount, setFaucetAmount] = useState("1000");
-  const [isApproving, setIsApproving] = useState(false);
+  const { address } = usePrivyAddress();
+  const [faucetAmount, setFaucetAmount] = useState("100");
+  const [approveAmount, setApproveAmount] = useState("1000");
   const [isFauceting, setIsFauceting] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
   const { data: balance } = useTokenBalance(player.tokenAddress, address);
   const { data: allowance } = useTokenAllowance(
@@ -43,17 +35,23 @@ export function PlayerCard({ player }: PlayerCardProps) {
     address
   );
 
-  const { mint: faucetMint } = useFaucetMint();
-  const { approve: approveToken } = useApproveToken();
+  const { mint } = useFaucetMint();
+  const { approve } = useApproveToken();
 
   const handleFaucet = async () => {
-    if (!address || !player.faucetEnabled) return;
+    if (!address || !faucetAmount) {
+      toast.error("Please fill in all fields");
+      return;
+    }
 
     setIsFauceting(true);
     try {
       const amount = parseNumber(faucetAmount);
-      await faucetMint(player.tokenAddress, amount);
-      toast.success(`Minted ${faucetAmount} ${player.symbol}`);
+      await mint(player.tokenAddress, amount);
+      toast.success(
+        `Successfully minted ${faucetAmount} ${player.symbol} tokens!`
+      );
+      setFaucetAmount("100");
     } catch (error) {
       console.error("Faucet error:", error);
       toast.error("Failed to mint tokens");
@@ -63,124 +61,140 @@ export function PlayerCard({ player }: PlayerCardProps) {
   };
 
   const handleApprove = async () => {
-    if (!address) return;
-
+    if (!address || !approveAmount) {
+      toast.error("Please fill in all fields");
+      return;
+    }
     setIsApproving(true);
     try {
-      const maxAmount = BigInt(2) ** BigInt(256) - BigInt(1); // Max uint256
-      await approveToken(player.tokenAddress, CONTRACTS.ESCROW_ADDR, maxAmount);
-      toast.success(`Approved ${player.symbol} for staking`);
+      const amount = parseNumber(approveAmount);
+      await approve(player.tokenAddress, CONTRACTS.ESCROW_ADDR, amount);
+      toast.success(
+        `Successfully approved ${approveAmount} ${player.symbol} tokens for staking!`
+      );
+      setApproveAmount("1000"); // Reset amount
     } catch (error) {
       console.error("Approve error:", error);
-      toast.error("Failed to approve tokens");
+      toast.error(
+        "Failed to approve tokens. Make sure you have enough tokens."
+      );
     } finally {
       setIsApproving(false);
     }
   };
 
-  const copyAddress = () => {
-    navigator.clipboard.writeText(player.tokenAddress);
-    setCopied(true);
-    toast.success("Address copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const needsApproval = allowance === 0n || allowance < (balance || 0n);
+  const playerImage = getPlayerImage(player.name);
 
   return (
-    <Card className="w-full">
+    <Card className="w-full hover:shadow-md transition-shadow">
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center border-2 border-gray-200">
-              <img
-                src={getPlayerImage(player.name)}
-                alt={player.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Fallback to placeholder if image fails to load
-                  e.currentTarget.src = "/images/players/placeholder.jpg";
-                }}
-                onLoad={(e) => {
-                  // Add a subtle animation when image loads
-                  e.currentTarget.style.opacity = "1";
-                }}
-                style={{ opacity: 0, transition: "opacity 0.3s ease-in-out" }}
-              />
-            </div>
-            <div>
-              <div className="text-lg font-bold">{player.name}</div>
-              <div className="text-sm text-muted-foreground">
-                {player.symbol}
-              </div>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+            {playerImage}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={copyAddress}
-            className="flex items-center gap-1"
-          >
-            {copied ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-          </Button>
+          <div className="flex-1">
+            <CardTitle className="text-xl">{player.name}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {player.symbol} • {formatNumber(player.initialSupply)} total
+              supply
+            </p>
+          </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        <div className="text-sm">
-          <div className="flex justify-between">
-            <span>Your Balance:</span>
-            <span className="font-mono">
-              {formatNumber(balance || 0n)} {player.symbol}
-            </span>
+        {/* Balance Display */}
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Coins className="h-4 w-4 text-green-600" />
+            <span className="font-medium">Your Balance</span>
           </div>
-          <div className="flex justify-between text-muted-foreground">
-            <span>Address:</span>
-            <span className="font-mono text-xs">
-              {formatAddress(player.tokenAddress)}
-            </span>
-          </div>
+          <span className="font-bold">
+            {balance ? formatNumber(balance as bigint) : "0"} {player.symbol}
+          </span>
         </div>
 
+        {/* Allowance Display */}
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-blue-600" />
+            <span className="font-medium">Escrow Allowance</span>
+          </div>
+          <span className="font-bold">
+            {allowance ? formatNumber(allowance as bigint) : "0"}{" "}
+            {player.symbol}
+          </span>
+        </div>
+
+        {/* Faucet Section */}
         {player.faucetEnabled && (
           <div className="space-y-2">
+            <label className="block text-sm font-medium">
+              Faucet Amount ({player.symbol})
+            </label>
             <div className="flex gap-2">
               <Input
                 type="number"
                 value={faucetAmount}
                 onChange={(e) => setFaucetAmount(e.target.value)}
-                placeholder="Amount to mint"
+                placeholder="100"
                 className="flex-1"
               />
               <Button
                 onClick={handleFaucet}
-                disabled={isFauceting}
+                disabled={isFauceting || !address}
+                size="sm"
                 className="flex items-center gap-2"
               >
-                <Zap className="h-4 w-4" />
-                {isFauceting ? "Minting..." : "Faucet"}
+                {isFauceting ? (
+                  "Minting..."
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4" />
+                    Mint
+                  </>
+                )}
               </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Cap per address: {formatNumber(player.faucetCapPerAddr)}
             </div>
           </div>
         )}
 
-        {needsApproval && (
-          <Button
-            onClick={handleApprove}
-            disabled={isApproving}
-            variant="outline"
-            className="w-full"
-          >
-            {isApproving
-              ? "Approving..."
-              : `Approve ${player.symbol} for Staking`}
-          </Button>
+        {/* Approve Section */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">
+            Approve Amount ({player.symbol})
+          </label>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              value={approveAmount}
+              onChange={(e) => setApproveAmount(e.target.value)}
+              placeholder="1000"
+              className="flex-1"
+            />
+            <Button
+              onClick={handleApprove}
+              disabled={isApproving || !address}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              {isApproving ? (
+                "Approving..."
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Approve
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {!address && (
+          <p className="text-center text-sm text-muted-foreground">
+            Connect your wallet to interact with this token
+          </p>
         )}
       </CardContent>
     </Card>

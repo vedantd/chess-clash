@@ -1,214 +1,205 @@
-# Chess Clash Frontend
+# Chess Clash - Token-Backed Challenges
 
-A Next.js 14 frontend for the Chess Clash token-backed challenges platform, built with TypeScript, Tailwind CSS, and shadcn/ui.
+A Next.js 14 application for creating and participating in token-backed chess challenges on Base Sepolia.
 
-## 🚀 Features
+## Features
 
-- **Token-Backed Challenges**: Create and participate in challenges between chess players
-- **Player Tokens**: Each chess player has their own ERC20 token
+- **Embedded Wallets**: Seamless wallet creation and management using Privy
+- **Email/SMS Authentication**: Easy login with email or phone number
+- **Player Tokens**: Get test tokens for chess players (Magnus, Gukesh, etc.)
+- **Challenge Creation**: Create challenges between two player tokens
 - **Staking System**: Stake tokens on either side of a challenge
-- **AMM Integration**: Automatic market making for token price discovery
 - **Admin Panel**: Resolve challenges and manage the platform
-- **Embedded Wallet**: Simple wallet connection for demo purposes
+- **Real-time Updates**: Live data from Base Sepolia testnet
 
-## 🏗️ Architecture
+## Tech Stack
 
-### Smart Contracts
-- `PlayerTokenFactory`: Creates and manages player tokens
-- `ChallengeEscrow`: Manages challenges, staking, and resolution
-- `MockOracle`: Provides challenge results (for demo)
-- `MockAMMRouter`: Simulates AMM swaps for price discovery
+- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
+- **UI Components**: shadcn/ui
+- **Wallet Integration**: Privy (embedded wallets + authentication)
+- **Blockchain**: Base Sepolia testnet
+- **Smart Contracts**: Solidity with OpenZeppelin
+- **State Management**: Zustand
+- **Notifications**: react-hot-toast
 
-### Frontend Structure
-- **Next.js 14** with App Router
-- **TypeScript** for type safety
-- **Tailwind CSS** + **shadcn/ui** for styling
-- **Custom Embedded Wallet** for wallet interactions
-- **Zustand** for state management
+## Quick Start
 
-## 📦 Installation
+### 1. Clone and Install
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd chess-clash/frontend
-   ```
+```bash
+git clone <repository-url>
+cd chess-clash/frontend
+npm install
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### 2. Environment Setup
 
-3. **Set up environment variables**
-   ```bash
-   cp env.example .env.local
-   ```
-   
-   Update `.env.local` with your contract addresses:
-   ```env
-   # Contract Addresses (Base Sepolia)
-   NEXT_PUBLIC_FACTORY_ADDR=0x4e5cb2996Fa9529381FC4277DAeEC8A59BbBe1FC
-   NEXT_PUBLIC_ESCROW_ADDR=0x... # Your ChallengeEscrow address
-   NEXT_PUBLIC_ORACLE_ADDR=0x... # Your MockOracle address
-   NEXT_PUBLIC_AMM_ROUTER_ADDR=0x... # Your MockAMMRouter address
-   
-   # Network Configuration
-   NEXT_PUBLIC_CHAIN_ID=84532 # Base Sepolia
-   NEXT_PUBLIC_RPC_URL=https://sepolia.base.org
-   ```
+Copy the example environment file and configure it:
 
-4. **Add player images** (optional)
-   ```bash
-   # Create the images directory
-   mkdir -p public/images/players
-   
-   # Add player images named 1.jpg, 2.jpg, etc.
-   # Or run the helper script:
-   chmod +x scripts/prepare-images.sh
-   ./scripts/prepare-images.sh
-   ```
+```bash
+cp env.example .env.local
+```
 
-5. **Start the development server**
-   ```bash
-   npm run dev
-   ```
+Update `.env.local` with your configuration:
 
-## 🎮 Usage
+```env
+# Privy Configuration
+NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
 
-### Creating a Challenge
-1. Connect your wallet
-2. Click "Create Challenge"
-3. Select two players (Player A vs Player B)
-4. Enter a description and duration
-5. Stake tokens for Player A
-6. Submit the challenge
+# Contract Addresses (Base Sepolia)
+NEXT_PUBLIC_FACTORY_ADDR=0xf86044C75e6590e898356458013e8AA476b7d634
+NEXT_PUBLIC_ESCROW_ADDR=0xF9c42Ea099F9E60Cc9db63E4a4D89056E7c4f26B
+NEXT_PUBLIC_ORACLE_ADDR=0xa01D832944EF77E7db03f686B919c39151a973F2
+NEXT_PUBLIC_AMM_ROUTER_ADDR=0x7d777B8B74f760B29f349b4745237893fFaB7Dca
 
-### Participating in Challenges
-1. Browse active challenges on the home page
-2. Click "View Details" to see challenge information
-3. Stake tokens for either Player A or Player B
-4. Wait for the challenge to end and be resolved
+# Network Configuration
+NEXT_PUBLIC_CHAIN_ID=84532 # Base Sepolia
+NEXT_PUBLIC_RPC_URL=https://sepolia.base.org
+```
 
-### Admin Functions
-1. Navigate to `/admin` (owner only)
-2. View ended challenges that need resolution
-3. Select the winner (Player A or Player B)
-4. Click "Resolve" to finalize the challenge
+### 3. Privy Setup
 
-### Claiming Winnings
-1. After a challenge is resolved, participants can claim their tokens
-2. Click "Claim" on resolved challenges
-3. Tokens are returned to participants (no pot splitting)
+1. Go to [Privy Console](https://console.privy.io/)
+2. Create a new app
+3. Copy your App ID and add it to `NEXT_PUBLIC_PRIVY_APP_ID`
+4. Configure authentication methods (email, SMS) in the Privy dashboard
 
-## 🔧 Development
+### 4. Run the Application
 
-### Project Structure
+```bash
+npm run dev
+```
+
+Visit `http://localhost:3000` to see the application.
+
+## Usage
+
+### 1. Connect Wallet
+- Click "Connect Wallet" in the navigation
+- Enter your email or phone number
+- Complete the verification process
+- Privy will automatically create an embedded wallet for you
+
+### 2. Get Player Tokens
+- Navigate to the "Players" page
+- Use the faucet to mint test tokens for chess players
+- Approve tokens for staking in challenges
+
+### 3. Create Challenges
+- Go to the home page and click "Create Challenge"
+- Select two players to compete
+- Add a description and stake amount
+- Submit the challenge
+
+### 4. Participate in Challenges
+- Browse active challenges on the home page
+- Click on a challenge to view details
+- Stake tokens on either player A or player B
+
+### 5. Admin Functions
+- Access the admin panel to resolve ended challenges
+- Select the winner and trigger the resolution process
+- Winners can claim their tokens after resolution
+
+## Project Structure
+
 ```
 frontend/
 ├── app/                    # Next.js App Router pages
 │   ├── admin/             # Admin panel
 │   ├── challenge/[id]/    # Challenge detail page
-│   ├── players/           # Players roster
+│   ├── players/           # Player tokens page
 │   └── page.tsx           # Home page
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
-│   ├── ChallengeCard.tsx # Challenge display
-│   ├── CreateChallengeForm.tsx
-│   ├── Navigation.tsx
-│   └── PlayerCard.tsx
-├── lib/                   # Utilities and configurations
-│   ├── contracts/        # Contract ABIs and hooks
-│   ├── store.ts          # Zustand state management
-│   ├── types.ts          # TypeScript types
-│   └── utils.ts          # Utility functions
-└── public/               # Static assets
-    └── images/players/   # Player images
+│   ├── Navigation.tsx    # Main navigation
+│   ├── PrivyProvider.tsx # Privy provider setup
+│   ├── PrivyWalletButton.tsx # Wallet connection button
+│   └── ...
+├── lib/                  # Utility libraries
+│   ├── contracts/        # Contract interactions
+│   │   ├── abis/        # Contract ABIs
+│   │   ├── addresses.ts # Contract addresses
+│   │   └── hooks.ts     # Contract hooks
+│   ├── privy-hooks.ts   # Privy integration hooks
+│   ├── store.ts         # Zustand state management
+│   ├── types.ts         # TypeScript types
+│   ├── utils.ts         # Utility functions
+│   └── wagmi.ts         # Viem client setup
+└── public/              # Static assets
 ```
 
-### Key Components
+## Smart Contracts
 
-#### Challenge System
-- **Challenge Creation**: Users create challenges between two players
-- **Staking**: Users stake tokens on either side
-- **Resolution**: Admin resolves challenges and determines winners
-- **AMM Integration**: Losing tokens are swapped for winning tokens
+The application interacts with several smart contracts on Base Sepolia:
 
-#### Player Tokens
-- Each chess player has their own ERC20 token
-- Tokens can be minted via faucet for testing
-- Token prices are influenced by challenge outcomes
+- **PlayerTokenFactory**: Creates and manages player tokens
+- **PlayerToken**: Individual player tokens with faucet functionality
+- **ChallengeEscrow**: Manages challenges, staking, and resolution
+- **MockOracle**: Provides challenge resolution data
+- **MockAMMRouter**: Handles token swaps for price discovery
 
-### State Management
-- **Zustand Store**: Manages global application state
-- **Contract Hooks**: Custom hooks for contract interactions
-- **Embedded Wallet**: Simplified wallet for demo purposes
+## Development
 
-## 🧪 Testing
+### Adding New Features
 
-### Manual Testing Checklist
-- [ ] Wallet connection
-- [ ] Player token faucet
-- [ ] Challenge creation
-- [ ] Staking on challenges
-- [ ] Challenge resolution (admin)
-- [ ] Token claiming
-- [ ] Player image display
+1. **New Pages**: Add to `app/` directory
+2. **Components**: Add to `components/` directory
+3. **Contract Interactions**: Add hooks to `lib/contracts/hooks.ts`
+4. **Types**: Update `lib/types.ts`
 
-### Demo Flow
-1. **Setup**: Deploy contracts and update environment variables
-2. **Player Creation**: Ensure PlayerTokenFactory has players
-3. **Challenge Creation**: Create a test challenge
-4. **Staking**: Stake tokens on both sides
-5. **Resolution**: Use admin panel to resolve challenge
-6. **Claiming**: Test token claiming functionality
+### Testing
 
-## 🚀 Deployment
+```bash
+# Run tests
+npm test
 
-### Vercel Deployment
-1. Push code to GitHub
-2. Connect repository to Vercel
-3. Set environment variables in Vercel dashboard
-4. Deploy
+# Run type checking
+npm run type-check
 
-### Environment Variables for Production
-```env
-NEXT_PUBLIC_FACTORY_ADDR=0x...
-NEXT_PUBLIC_ESCROW_ADDR=0x...
-NEXT_PUBLIC_ORACLE_ADDR=0x...
-NEXT_PUBLIC_AMM_ROUTER_ADDR=0x...
-NEXT_PUBLIC_CHAIN_ID=84532
-NEXT_PUBLIC_RPC_URL=https://sepolia.base.org
+# Run linting
+npm run lint
 ```
 
-## 📝 Notes
+### Building for Production
 
-### Contract Integration
-- ABIs are automatically copied from the contracts build output
-- Contract addresses must be updated in `.env.local`
-- All contract interactions use the custom embedded wallet
+```bash
+npm run build
+npm start
+```
 
-### Limitations (Demo Version)
-- Uses mock oracle for challenge resolution
-- Simplified AMM router for token swaps
-- Basic embedded wallet (not production-ready)
-- No subgraph indexing (events loaded directly)
+## Demo Flow
 
-### Production Considerations
-- Implement proper wallet connection (MetaMask, WalletConnect)
-- Add subgraph for efficient event indexing
-- Implement proper oracle integration
-- Add proper AMM integration
-- Add pagination for large datasets
-- Implement proper error handling and loading states
+1. **Connect Wallet**: Use email authentication to create an embedded wallet
+2. **Get Tokens**: Visit Players page and mint test tokens
+3. **Create Challenge**: Create a challenge between Magnus and Gukesh
+4. **Stake Tokens**: Stake tokens on either player
+5. **Resolve Challenge**: Use admin panel to resolve the challenge
+6. **Claim Winnings**: Winners claim their tokens
 
-## 🤝 Contributing
+## Troubleshooting
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+### Common Issues
 
-## 📄 License
+1. **"Privy App ID not configured"**
+   - Make sure `NEXT_PUBLIC_PRIVY_APP_ID` is set in `.env.local`
 
-This project is licensed under the MIT License.
+2. **"No player tokens found"**
+   - Ensure the factory contract is deployed and tokens are created
+   - Check that contract addresses are correct
+
+3. **Transaction failures**
+   - Verify you're connected to Base Sepolia
+   - Ensure you have sufficient tokens for staking
+   - Check that tokens are approved for the escrow contract
+
+### Getting Help
+
+- Check the browser console for error messages
+- Verify contract addresses are correct
+- Ensure Privy app is properly configured
+- Check that you're on the correct network (Base Sepolia)
+
+## License
+
+MIT License - see LICENSE file for details.

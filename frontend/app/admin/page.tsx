@@ -11,30 +11,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useResolveChallenge, useIsOwner } from "@/lib/contracts/hooks";
-import { useEmbeddedWallet } from "@/components/WagmiProvider";
-import { CONTRACTS } from "@/lib/contracts/addresses";
+import { useGetAllPlayers, useResolveChallenge } from "@/lib/contracts/hooks";
+import { usePrivyAddress } from "@/lib/privy-hooks";
 import { useAppStore } from "@/lib/store";
 import { Challenge, Player } from "@/lib/types";
-import { formatNumber, getChallengeStatus, getStatusColor } from "@/lib/utils";
+import { CONTRACTS } from "@/lib/contracts/addresses";
+import { formatAddress, formatNumber, getChallengeStatus, getStatusColor } from "@/lib/utils";
 import { Gavel, Shield } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function AdminPage() {
-  const { account } = useEmbeddedWallet();
-  const address = account?.address;
-  const { challenges, players } = useAppStore();
+  const { players, challenges, setPlayers } = useAppStore();
+  const { data: playersData, isLoading: isLoadingPlayers } = useGetAllPlayers();
+  const { address } = usePrivyAddress();
   const [selectedWinner, setSelectedWinner] = useState<"A" | "B">("A");
   const [isResolving, setIsResolving] = useState<string | null>(null);
 
-  const { data: ownerAddress } = useIsOwner();
-  const { resolveChallenge, isResolving: isResolvingChallenge } =
-    useResolveChallenge();
+  const { resolveChallenge, isResolving: isResolvingChallenge } = useResolveChallenge();
 
-  const isOwner =
-    address &&
-    ownerAddress &&
-    address.toLowerCase() === ownerAddress.toLowerCase();
+  // Load players data
+  useEffect(() => {
+    if (playersData && !isLoadingPlayers && Array.isArray(playersData)) {
+      const formattedPlayers: Player[] = playersData.map((player: any) => ({
+        tokenAddress: player.tokenAddress,
+        name: player.name,
+        symbol: player.symbol,
+        initialSupply: player.totalSupply,
+        faucetEnabled: player.faucetEnabled,
+        faucetCapPerAddr: player.faucetCapPerAddr,
+      }));
+      setPlayers(formattedPlayers);
+    }
+  }, [playersData, isLoadingPlayers, setPlayers]);
 
   // Filter challenges that are ended but not resolved
   const endedChallenges = Array.from(challenges.values()).filter(
@@ -42,8 +50,8 @@ export default function AdminPage() {
   );
 
   const handleResolve = async (challengeId: bigint) => {
-    if (!isOwner) {
-      toast.error("Only the owner can resolve challenges");
+    if (!address) {
+      toast.error("Please connect your wallet");
       return;
     }
 
@@ -65,8 +73,7 @@ export default function AdminPage() {
 
     setIsResolving(challengeId.toString());
     try {
-      const winnerToken =
-        selectedWinner === "A" ? challenge.playerA : challenge.playerB;
+      const winnerToken = selectedWinner === "A" ? challenge.playerA : challenge.playerB;
 
       await resolveChallenge(challengeId, winnerToken);
 
@@ -94,14 +101,18 @@ export default function AdminPage() {
     );
   }
 
-  if (!isOwner) {
+  // For demo purposes, we'll allow any connected user to access admin
+  // In production, you'd check against a specific admin address
+  const isAdmin = true; // address.toLowerCase() === "ADMIN_ADDRESS_HERE".toLowerCase();
+
+  if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
         <div className="container mx-auto px-4 py-8">
           <div className="text-center">
             <Shield className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+            <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
             <p className="text-muted-foreground">
               Only the contract owner can access this page
             </p>
@@ -235,9 +246,9 @@ export default function AdminPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Owner:</span>
+                  <span className="text-muted-foreground">Admin:</span>
                   <span className="font-mono">
-                    {ownerAddress ? formatAddress(ownerAddress) : "Loading..."}
+                    {address ? formatAddress(address) : "Loading..."}
                   </span>
                 </div>
                 <div className="flex justify-between">

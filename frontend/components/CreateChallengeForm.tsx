@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -11,12 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCreateChallenge, useStakeForA } from "@/lib/contracts/hooks";
-import { useEmbeddedWallet } from "./WagmiProvider";
-import { CONTRACTS } from "@/lib/contracts/addresses";
-import { Player } from "@/lib/types";
-import { parseNumber, formatNumber } from "@/lib/utils";
 import { Send } from "lucide-react";
+import { Player } from "@/lib/types";
+import { useCreateChallenge, useStakeForA } from "@/lib/contracts/hooks";
+import { usePrivyAddress } from "@/lib/privy-hooks";
+import { parseNumber } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 interface CreateChallengeFormProps {
@@ -28,8 +27,7 @@ export function CreateChallengeForm({
   players,
   onSuccess,
 }: CreateChallengeFormProps) {
-  const { account } = useEmbeddedWallet();
-  const address = account?.address;
+  const { address } = usePrivyAddress();
   const [description, setDescription] = useState("");
   const [playerA, setPlayerA] = useState("");
   const [playerB, setPlayerB] = useState("");
@@ -37,24 +35,19 @@ export function CreateChallengeForm({
   const [duration, setDuration] = useState("3600"); // 1 hour default
   const [isCreating, setIsCreating] = useState(false);
 
-  const { createChallenge, isCreating: isCreatingChallenge } =
-    useCreateChallenge();
+  const { createChallenge, isCreating: isCreatingChallenge } = useCreateChallenge();
   const { stakeForA, isStaking } = useStakeForA();
 
   const selectedPlayerA = players.find((p) => p.tokenAddress === playerA);
   const selectedPlayerB = players.find((p) => p.tokenAddress === playerB);
 
+  // Debug: Log available players
+  console.log('Available players for challenge creation:', players);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (
-      !address ||
-      !playerA ||
-      !playerB ||
-      !description.trim() ||
-      !stakeAmount ||
-      !duration
-    ) {
+    if (!address || !playerA || !playerB || !description.trim() || !stakeAmount || !duration) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -63,6 +56,16 @@ export function CreateChallengeForm({
       toast.error("Player A and Player B must be different");
       return;
     }
+
+    // Debug: Log the selected players
+    console.log('Creating challenge with:', {
+      playerA,
+      playerB,
+      description,
+      duration,
+      selectedPlayerA,
+      selectedPlayerB
+    });
 
     setIsCreating(true);
     try {
@@ -141,10 +144,7 @@ export function CreateChallengeForm({
                 </SelectTrigger>
                 <SelectContent>
                   {players.map((player) => (
-                    <SelectItem
-                      key={player.tokenAddress}
-                      value={player.tokenAddress}
-                    >
+                    <SelectItem key={player.tokenAddress} value={player.tokenAddress}>
                       {player.name}
                     </SelectItem>
                   ))}
@@ -162,10 +162,7 @@ export function CreateChallengeForm({
                 </SelectTrigger>
                 <SelectContent>
                   {players.map((player) => (
-                    <SelectItem
-                      key={player.tokenAddress}
-                      value={player.tokenAddress}
-                    >
+                    <SelectItem key={player.tokenAddress} value={player.tokenAddress}>
                       {player.name}
                     </SelectItem>
                   ))}

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { CONTRACTS } from './addresses';
 import { Player, Challenge, UserStake } from '../types';
 import { publicClient } from '../wagmi';
-import { useEmbeddedWallet } from '../../components/WagmiProvider';
+import { usePrivyWallet, usePrivyAddress, usePrivyAuth } from '../privy-hooks';
 
 // Import actual ABIs
 import PlayerTokenABI from './abis/PlayerToken.json';
@@ -44,13 +44,13 @@ function useAsyncData<T>(fn: () => Promise<T>, deps: any[] = []) {
 
 // Embedded wallet hooks
 export const useGetEvmAddress = () => {
-  const { account } = useEmbeddedWallet();
-  return { evmAddress: account?.address };
+  const { address } = usePrivyAddress();
+  return { evmAddress: address };
 };
 
 export const useGetIsSignedIn = () => {
-  const { isConnected } = useEmbeddedWallet();
-  return { isSignedIn: isConnected };
+  const { isAuthenticated } = usePrivyAuth();
+  return { isSignedIn: isAuthenticated };
 };
 
 // Factory hooks
@@ -80,8 +80,8 @@ export const useGetAllPlayers = () => {
 
 // PlayerToken hooks
 export const useTokenBalance = (tokenAddress: `0x${string}`, userAddress?: `0x${string}`) => {
-  const { account } = useEmbeddedWallet();
-  const targetAddress = userAddress || account?.address;
+  const { address } = usePrivyAddress();
+  const targetAddress = userAddress || address;
   
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
     if (!targetAddress) return 0n;
@@ -103,8 +103,8 @@ export const useTokenBalance = (tokenAddress: `0x${string}`, userAddress?: `0x${
 };
 
 export const useTokenAllowance = (tokenAddress: `0x${string}`, spender: `0x${string}`, userAddress?: `0x${string}`) => {
-  const { account } = useEmbeddedWallet();
-  const targetAddress = userAddress || account?.address;
+  const { address } = usePrivyAddress();
+  const targetAddress = userAddress || address;
   
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
     if (!targetAddress || !spender) return 0n;
@@ -120,17 +120,17 @@ export const useTokenAllowance = (tokenAddress: `0x${string}`, spender: `0x${str
       console.error('Error fetching allowance:', err);
       return 0n;
     }
-  }, [targetAddress, spender, tokenAddress]);
+  }, [targetAddress, tokenAddress, spender]);
 
   return { data, isLoading, error, refetch };
 };
 
 // Transaction hooks using embedded wallet
 export const useFaucetMint = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
 
   const mint = async (tokenAddress: `0x${string}`, amount: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
+    if (!account || !walletClient) throw new Error('No wallet connected');
     return await walletClient.sendTransaction({
       account: account,
       to: tokenAddress,
@@ -146,10 +146,10 @@ export const useFaucetMint = () => {
 };
 
 export const useApproveToken = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
 
   const approve = async (tokenAddress: `0x${string}`, spender: `0x${string}`, amount: bigint) => {
-    if (!account?.address || !walletClient) throw new Error('No wallet connected');
+    if (!account || !walletClient) throw new Error('No wallet connected');
     return await walletClient.sendTransaction({
       account: account,
       to: tokenAddress,
@@ -162,6 +162,185 @@ export const useApproveToken = () => {
     });
   };
   return { approve };
+};
+
+// Combined approve and stake functions
+export const useApproveAndStakeForA = () => {
+  const { walletClient, account } = usePrivyWallet();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const approveAndStakeForA = useCallback(async (challengeId: bigint, amount: bigint) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsProcessing(true);
+    try {
+      // First, get the challenge to know which token to approve
+      const challenge = await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'getChallenge',
+        args: [challengeId],
+      }) as any;
+
+      const playerAToken = challenge.playerA;
+      
+      console.log('Approving and staking for Player A:', {
+        challengeId: challengeId.toString(),
+        amount: amount.toString(),
+        token: playerAToken
+      });
+
+      // Step 1: Approve the token
+      const approveData = encodeFunctionData({
+        abi: playerTokenABI,
+        functionName: 'approve',
+        args: [CONTRACTS.ESCROW_ADDR, amount],
+      });
+
+      console.log('Sending approval transaction...');
+      const approveHash = await walletClient.sendTransaction({
+        account: account,
+        to: playerAToken,
+        data: approveData,
+        chain: baseSepolia,
+      });
+
+      console.log('Approval transaction sent:', approveHash);
+
+      // Wait for approval to be mined
+      const approveReceipt = await publicClient.waitForTransactionReceipt({
+        hash: approveHash,
+      });
+
+      if (approveReceipt.status !== 'success') {
+        throw new Error('Approval transaction failed');
+      }
+
+      console.log('Approval successful, now staking...');
+
+      // Step 2: Stake the tokens
+      const stakeData = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'stakeForA',
+        args: [challengeId, amount],
+      });
+
+      const stakeHash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data: stakeData,
+        chain: baseSepolia,
+      });
+
+      console.log('Stake transaction sent:', stakeHash);
+
+      // Wait for stake to be mined
+      const stakeReceipt = await publicClient.waitForTransactionReceipt({
+        hash: stakeHash,
+      });
+
+      if (stakeReceipt.status !== 'success') {
+        throw new Error('Stake transaction failed');
+      }
+
+      console.log('Stake successful!');
+      return { approveHash, stakeHash };
+
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [walletClient, account]);
+
+  return { approveAndStakeForA, isProcessing };
+};
+
+export const useApproveAndStakeForB = () => {
+  const { walletClient, account } = usePrivyWallet();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const approveAndStakeForB = useCallback(async (challengeId: bigint, amount: bigint) => {
+    if (!walletClient || !account) throw new Error('Wallet not connected');
+    
+    setIsProcessing(true);
+    try {
+      // First, get the challenge to know which token to approve
+      const challenge = await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'getChallenge',
+        args: [challengeId],
+      }) as any;
+
+      const playerBToken = challenge.playerB;
+      
+      console.log('Approving and staking for Player B:', {
+        challengeId: challengeId.toString(),
+        amount: amount.toString(),
+        token: playerBToken
+      });
+
+      // Step 1: Approve the token
+      const approveData = encodeFunctionData({
+        abi: playerTokenABI,
+        functionName: 'approve',
+        args: [CONTRACTS.ESCROW_ADDR, amount],
+      });
+
+      console.log('Sending approval transaction...');
+      const approveHash = await walletClient.sendTransaction({
+        account: account,
+        to: playerBToken,
+        data: approveData,
+        chain: baseSepolia,
+      });
+
+      console.log('Approval transaction sent:', approveHash);
+
+      // Wait for approval to be mined
+      const approveReceipt = await publicClient.waitForTransactionReceipt({
+        hash: approveHash,
+      });
+
+      if (approveReceipt.status !== 'success') {
+        throw new Error('Approval transaction failed');
+      }
+
+      console.log('Approval successful, now staking...');
+
+      // Step 2: Stake the tokens
+      const stakeData = encodeFunctionData({
+        abi: challengeEscrowABI,
+        functionName: 'stakeForB',
+        args: [challengeId, amount],
+      });
+
+      const stakeHash = await walletClient.sendTransaction({
+        account: account,
+        to: CONTRACTS.ESCROW_ADDR,
+        data: stakeData,
+        chain: baseSepolia,
+      });
+
+      console.log('Stake transaction sent:', stakeHash);
+
+      // Wait for stake to be mined
+      const stakeReceipt = await publicClient.waitForTransactionReceipt({
+        hash: stakeHash,
+      });
+
+      if (stakeReceipt.status !== 'success') {
+        throw new Error('Stake transaction failed');
+      }
+
+      console.log('Stake successful!');
+      return { approveHash, stakeHash };
+
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [walletClient, account]);
+
+  return { approveAndStakeForB, isProcessing };
 };
 
 // Challenge hooks
@@ -184,8 +363,8 @@ export const useGetChallenge = (challengeId: bigint) => {
 };
 
 export const useGetUserStake = (challengeId: bigint, userAddress?: `0x${string}`) => {
-  const { account } = useEmbeddedWallet();
-  const targetAddress = userAddress || account?.address;
+  const { address } = usePrivyAddress();
+  const targetAddress = userAddress || address;
   
   const { data, isLoading, error, refetch } = useAsyncData(async () => {
     if (!targetAddress) return null;
@@ -224,9 +403,121 @@ export const useTotalChallenges = () => {
   return { data, isLoading, error, refetch };
 };
 
+// Hook to get all challenges
+export const useGetAllChallenges = () => {
+  const { data, isLoading, error, refetch } = useAsyncData(async () => {
+    try {
+      // Get total number of challenges
+      const totalChallenges = await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'totalChallenges',
+        args: [],
+      }) as bigint;
+
+      console.log('Total challenges:', totalChallenges);
+
+      if (totalChallenges === 0n) {
+        return [];
+      }
+
+      // Fetch all challenges
+      const challenges = [];
+      for (let i = 0; i < Number(totalChallenges); i++) {
+        try {
+          const challenge = await publicClient.readContract({
+            address: CONTRACTS.ESCROW_ADDR,
+            abi: challengeEscrowABI,
+            functionName: 'getChallenge',
+            args: [BigInt(i)],
+          }) as any;
+          
+          challenges.push(challenge);
+        } catch (err) {
+          console.error(`Error fetching challenge ${i}:`, err);
+          // Continue with other challenges even if one fails
+        }
+      }
+
+      console.log('Fetched challenges:', challenges);
+      return challenges;
+    } catch (err) {
+      console.error('Error fetching all challenges:', err);
+      return [];
+    }
+  });
+
+  return { data, isLoading, error, refetch };
+};
+
+// Hook to get user's challenges (challenges they've staked on)
+export const useGetUserChallenges = (userAddress?: `0x${string}`) => {
+  const { data, isLoading, error, refetch } = useAsyncData(async () => {
+    if (!userAddress) return [];
+    
+    try {
+      // Get total number of challenges
+      const totalChallenges = await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'totalChallenges',
+        args: [],
+      }) as bigint;
+
+      if (totalChallenges === 0n) {
+        return [];
+      }
+
+      // Fetch all challenges and check if user has staked on them
+      const userChallenges = [];
+      for (let i = 0; i < Number(totalChallenges); i++) {
+        try {
+          const challenge = await publicClient.readContract({
+            address: CONTRACTS.ESCROW_ADDR,
+            abi: challengeEscrowABI,
+            functionName: 'getChallenge',
+            args: [BigInt(i)],
+          }) as any;
+
+          // Check if user has staked on this challenge
+          const userStake = await publicClient.readContract({
+            address: CONTRACTS.ESCROW_ADDR,
+            abi: challengeEscrowABI,
+            functionName: 'getUserStake',
+            args: [BigInt(i), userAddress],
+          }) as any;
+
+          // If user has staked (either on player A or B), include this challenge
+          if (userStake.hasStaked && (userStake.amountA > 0n || userStake.amountB > 0n)) {
+            userChallenges.push({
+              ...challenge,
+              userStake: {
+                amountA: userStake.amountA,
+                amountB: userStake.amountB,
+                hasStaked: userStake.hasStaked,
+              }
+            });
+          }
+        } catch (err) {
+          console.error(`Error fetching challenge ${i}:`, err);
+          // Continue with other challenges even if one fails
+        }
+      }
+
+      console.log('User challenges:', userChallenges);
+      return userChallenges;
+    } catch (err) {
+      console.error('Error fetching user challenges:', err);
+      return [];
+    }
+  }, [userAddress]);
+
+  return { data, isLoading, error, refetch };
+};
+
 // Challenge creation and staking hooks
 export const useCreateChallenge = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
   const [isCreating, setIsCreating] = useState(false);
 
   const createChallenge = useCallback(async (
@@ -262,7 +553,7 @@ export const useCreateChallenge = () => {
 };
 
 export const useStakeForA = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
   const [isStaking, setIsStaking] = useState(false);
 
   const stakeForA = useCallback(async (challengeId: bigint, amount: bigint) => {
@@ -293,7 +584,7 @@ export const useStakeForA = () => {
 };
 
 export const useStakeForB = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
   const [isStaking, setIsStaking] = useState(false);
 
   const stakeForB = useCallback(async (challengeId: bigint, amount: bigint) => {
@@ -324,7 +615,7 @@ export const useStakeForB = () => {
 };
 
 export const useResolveChallenge = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
   const [isResolving, setIsResolving] = useState(false);
 
   const resolveChallenge = useCallback(async (challengeId: bigint, winnerToken: `0x${string}`) => {
@@ -355,7 +646,7 @@ export const useResolveChallenge = () => {
 };
 
 export const useClaimTokens = () => {
-  const { walletClient, account } = useEmbeddedWallet();
+  const { walletClient, account } = usePrivyWallet();
   const [isClaiming, setIsClaiming] = useState(false);
 
   const claimTokens = useCallback(async (challengeId: bigint) => {
@@ -383,4 +674,27 @@ export const useClaimTokens = () => {
   }, [walletClient, account]);
 
   return { claimTokens, isClaiming };
+}; 
+
+// Test function to verify contract accessibility
+export const useTestContract = () => {
+  const { data, isLoading, error, refetch } = useAsyncData(async () => {
+    try {
+      // Try to read the totalChallenges to see if contract is accessible
+      const totalChallenges = await publicClient.readContract({
+        address: CONTRACTS.ESCROW_ADDR,
+        abi: challengeEscrowABI,
+        functionName: 'totalChallenges',
+        args: [],
+      });
+      
+      console.log('Contract test successful, totalChallenges:', totalChallenges);
+      return { success: true, totalChallenges };
+    } catch (err) {
+      console.error('Contract test failed:', err);
+      return { success: false, error: err };
+    }
+  });
+
+  return { data, isLoading, error, refetch };
 }; 
